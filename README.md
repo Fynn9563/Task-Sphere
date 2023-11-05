@@ -10,23 +10,53 @@ Task Sphere is a simple yet powerful application that helps you keep track of ta
 - **Day Views:** Open separate windows to view tasks scheduled for each day.
 - **Persistent Storage:** Uses SQLite database to store tasks persistently.
   
+Certainly! Here's a detailed guide for someone who may not be familiar with using the Command Prompt or Terminal:
+
 ## Installation
 
-To get started with Task Sphere, follow these simple steps:
+Setting up Task Sphere requires a few simple steps. Even if you're new to using the Command Prompt (Windows) or Terminal (macOS/Linux), these instructions will guide you through the process.
 
-1. Ensure you have Python installed on your machine.
-2. Clone the repository to your local machine:
-   ```bash
-   git clone https://github.com/Fynn9563/Task-Sphere.git
-   ```
-3. Before running the application, you need to install the dependencies listed in `requirements.txt`. This can be done easily using `pip`:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Navigate to the cloned directory and run the main script:
-   ```bash
-   Task Sphere.pyw
-   ```
+### Prerequisites
+Before you begin, ensure that:
+- You have Python installed on your computer. You can check this by opening the Command Prompt or Terminal and typing `python --version`. If it shows a version number, Python is installed.
+- Git is also necessary to obtain the application files. If you haven't installed Git, download it from [git-scm.com](https://git-scm.com/downloads) and follow the instructions on the site to install it.
+
+### Step 1: Download the Application Source Code
+1. **Open Command Prompt or Terminal:**
+   - Press `Win + R`, type `cmd`, and press `Enter`.
+   
+2. **Navigate to Your Preferred Directory:**
+   - Use the `cd` (change directory) command to move to the folder where you want to download Task Sphere.
+   - Example: If you want to download it to a folder named `MyApplications` on your Desktop, type `cd Desktop/MyApplications` and press `Enter`.
+
+3. **Clone the Repository:**
+   - Once in your chosen directory, type the following command and press `Enter`:
+     ```
+     git clone https://github.com/Fynn9563/Task-Sphere.git
+     ```
+   - This command will create a copy of Task Sphere in a new folder named `Task-Sphere` inside your current directory.
+
+### Step 2: Install the Application Dependencies
+1. **Open the Cloned Folder:**
+   - After the cloning process is complete, you need to access the `Task-Sphere` folder. If you're not familiar with using commands to navigate folders, you can do this step using your file explorer.
+   - Locate the `Task-Sphere` folder where you performed the clone and open it.
+
+2. **Run the Install Script:**
+   - Inside the `Task-Sphere` folder, find a file called `Install.bat`.
+   - Double-click `Install.bat`. This will initiate the installation of any Python packages needed and create a shortcut on your desktop.
+
+### Step 3: Launch Task Sphere
+1. **Find the Shortcut:**
+   - After running the install script, go to your desktop and look for a new icon labeled 'Task Sphere'.
+   
+2. **Start the Application:**
+   - Double-click the 'Task Sphere.lnk' shortcut to launch the application.
+   - Task Sphere will open, and you can begin organizing your tasks.
+
+### Troubleshooting
+- If Python or Git commands don't work, they may not be installed correctly, or their system path may not be set up. Revisit the installation instructions for those programs.
+- Make sure you're typing commands exactly as shown, with no extra spaces or characters.
+- If the application doesn't start after double-clicking the shortcut, try running the `Install.bat` file again, or manually navigate to the `Task-Sphere` folder and double-click the Python script to start the program.
       
 ## Usage
 
