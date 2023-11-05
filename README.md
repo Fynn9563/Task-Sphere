@@ -38,7 +38,7 @@ After launching the application, you will be greeted with a straightforward inte
 
 2. **Marking a Task as Done/Undone:**
    - Select a task from the list.
-   - Click "Mark as Done" or "Mark as Undone" as appropriate.
+   - Click "Mark as Done" or "Mark as Not Done" as appropriate.
 
 3. **Deleting a Task:**
    - Select the task you wish to remove.
