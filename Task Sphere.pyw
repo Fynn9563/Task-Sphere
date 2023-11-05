@@ -69,7 +69,7 @@ class TaskTracker(tk.Tk):
         self.mark_done_button = tk.Button(self, text="Mark as Done", command=lambda: self.mark_task_status(True), font=self.customHeadingsFont)
         self.mark_done_button.grid(row=3, column=0, pady=5)
 
-        self.mark_undone_button = tk.Button(self, text="Mark as Undone", command=lambda: self.mark_task_status(False), font=self.customHeadingsFont)
+        self.mark_undone_button = tk.Button(self, text="Mark as Not Done", command=lambda: self.mark_task_status(False), font=self.customHeadingsFont)
         self.mark_undone_button.grid(row=3, column=1, pady=5)
 
         self.delete_task_button = tk.Button(self, text="Delete Task", command=self.delete_task, font=self.customHeadingsFont)
@@ -136,7 +136,7 @@ class TaskTracker(tk.Tk):
     def mark_task_status(self, done):
         selected_items = self.tasks_listbox.curselection()
         if not selected_items:
-            messagebox.showwarning("Warning", "Please select a task to mark as done/undone.")
+            messagebox.showwarning("Warning", "Please select a task to mark as Done/Not Done.")
             return
 
         for selected_item in selected_items:
