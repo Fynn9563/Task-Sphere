@@ -1,6 +1,6 @@
 # Task Sphere
 
-Task Sphere is a simple yet powerful application that helps you keep track of tasks and their completion status. Built with Python's Tkinter library and SQLite, it offers a user-friendly GUI to add, delete, and mark tasks as done or undone. Moreover, Task Sphere allows assigning tasks to specific days and provides a comprehensive view of your weekly schedule.
+Task Sphere is a simple yet powerful application that helps you keep track of tasks and their completion status. Built with Python's Tkinter library and SQLite, it offers a user-friendly GUI to add, delete, and mark tasks as done ✅ or not done ❌. Moreover, Task Sphere allows assigning tasks to specific days and provides a comprehensive view of your weekly schedule.
 
 ## Features
 
