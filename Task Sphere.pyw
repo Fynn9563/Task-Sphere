@@ -114,7 +114,6 @@ class TaskTracker(tk.Tk):
         requesters = [""]
         requesters.extend(sorted([row[0] for row in c.fetchall()]))
         self.requester_entry['values'] = requesters
-        self.requester_entry.set(requesters[0])  # Set the combobox to show the blank option by default
  
     def filter_tasks_by_requester(self, event=None):
         selected_requester = self.requester_entry.get()
@@ -197,10 +196,16 @@ class TaskTracker(tk.Tk):
         
     def load_tasks(self, filter_requester=None):
         self.tasks_listbox.delete(0, tk.END)
-        # Include the day_assigned field in the SELECT statement
+        
+        # If no specific requester is provided, use the currently selected one
+        if filter_requester is None:
+            filter_requester = self.requester_entry.get()
+            if filter_requester == "":
+                filter_requester = None
+        
         query = "SELECT id, requester, task_name, status, day_assigned FROM tasks"
         parameters = ()
-        if filter_requester and filter_requester != "":
+        if filter_requester:
             query += " WHERE requester = ?"
             parameters = (filter_requester,)
         query += " ORDER BY requester"
@@ -208,14 +213,9 @@ class TaskTracker(tk.Tk):
         
         for row in c.fetchall():
             status = "Done ✅" if row[3] else "Not Done ❌"
-            # Check if day_assigned is not None or not an empty string
             day_assigned = f" - 📅 {row[4]}" if row[4] else ""
             line = f"{row[0]}: {row[1]} - {row[2]} [{status}]{day_assigned}"
             self.tasks_listbox.insert(tk.END, line)
-
-        # Reset the filter if no specific requester is provided
-        if not filter_requester:
-            self.requester_entry.set('')
 
     def view_tasks_by_day(self):
         window = tk.Toplevel(self)
