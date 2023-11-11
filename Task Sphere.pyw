@@ -111,6 +111,26 @@ class TaskTracker(tk.Tk):
     def on_listbox_select(self, event):
         pass  # This method can be implemented if needed
 
+    def update_main_from_schedule(self, event):
+        tree = event.widget
+        selected_item = tree.selection()
+        
+        if selected_item:
+            task_data = tree.item(selected_item, 'values')
+            task_id, requester = task_data[0], task_data[1]
+
+            # Set the requester in the combobox and apply the filter
+            self.requester_entry.set(requester)
+            self.filter_tasks_by_requester()
+
+            # Find and select the task in the main task list
+            self.tasks_listbox.selection_clear(0, tk.END)  # Deselect any currently selected task
+            for i, list_item in enumerate(self.tasks_listbox.get(0, tk.END)):
+                if list_item.startswith(str(task_id) + ":"):
+                    self.tasks_listbox.selection_set(i)
+                    self.tasks_listbox.see(i)
+                    break
+                    
     def add_task(self):
         requester = self.requester_entry.get()
         task_name = self.task_name_entry.get()
@@ -221,6 +241,7 @@ class TaskTracker(tk.Tk):
         tree.column('task_name', width=180, anchor='w')
         tree.column('status', width=80, anchor='center')
         tree.column('day_assigned', width=100, anchor='center')
+        tree.bind('<<TreeviewSelect>>', self.update_main_from_schedule)
 
         for task in self.db.get_tasks(filter_requester=None):
             if task[4]:  # Only if day_assigned is not None
