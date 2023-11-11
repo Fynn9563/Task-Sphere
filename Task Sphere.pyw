@@ -59,8 +59,10 @@ class TaskTracker(tk.Tk):
         self.geometry("800x500")
 
         self.day_windows = {}  
+
         self.create_widgets()
         self.load_tasks()
+        self.refresh_requester_dropdown()
 
     def create_widgets(self):
         self.requester_label = tk.Label(self, text="Requester:", font=self.customHeadingsFont)
