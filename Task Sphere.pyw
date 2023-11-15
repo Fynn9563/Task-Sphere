@@ -167,6 +167,10 @@ class TaskTracker(tk.Tk):
             task_id = self.tasks_listbox.get(selected_item).split(":")[0]
             self.db.update_task_status(task_id, done)
 
+        # If marking as done, also unassign the day
+        if done:
+            self.db.unassign_day_from_task(task_id)
+
         self.load_tasks()
         self.refresh_day_windows()
 
