@@ -145,7 +145,7 @@ class TaskTracker(tk.Tk):
         self.tasks_listbox.delete(0, tk.END)
         filter_requester = self.requester_entry.get() if self.requester_entry.get() != "" else None
         for task in self.db.get_tasks(filter_requester):
-            status = "Done ✅" if task[3] else "Not Done ❌"
+            status = "Done ✔" if task[3] else "Not Done ❌"
             color = 'dark green' if task[3] else 'red'
             day_assigned = f" - 📅 {task[4]}" if task[4] else ""
             line = f"{task[0]}: {task[1]} - {task[2]} [{status}]{day_assigned}"
