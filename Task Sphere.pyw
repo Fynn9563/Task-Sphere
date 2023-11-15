@@ -145,7 +145,7 @@ class TaskTracker(tk.Tk):
         self.tasks_listbox.delete(0, tk.END)
         filter_requester = self.requester_entry.get() if self.requester_entry.get() != "" else None
         for task in self.db.get_tasks(filter_requester):
-            status = "Done ✅" if task[3] else "Not Done ❌"
+            status = "Done ✔" if task[3] else "Not Done ❌"
             day_assigned = f" - 📅 {task[4]}" if task[4] else ""
             line = f"{task[0]}: {task[1]} - {task[2]} [{status}]{day_assigned}"
             self.tasks_listbox.insert(tk.END, line)
@@ -249,7 +249,7 @@ class TaskTracker(tk.Tk):
 
         for task in self.db.get_tasks(filter_requester=None):
             if task[4]:  # Only if day_assigned is not None
-                status = "Done ✅" if task[3] else "Not Done ❌"
+                status = "Done ✔" if task[3] else "Not Done ❌"
                 tree.insert("", tk.END, values=(task[0], task[1], task[2], status, task[4]))
 
         vsb = ttk.Scrollbar(window, orient="vertical", command=tree.yview)
@@ -270,7 +270,7 @@ class TaskTracker(tk.Tk):
 
                 for task in self.db.get_tasks(filter_requester=None):
                     if task[4]:  # Only if day_assigned is not None
-                        status = "Done ✅" if task[3] else "Not Done ❌"
+                        status = "Done ✔" if task[3] else "Not Done ❌"
                         tree.insert('', tk.END, values=(task[0], task[1], task[2], status, task[4]))
 
 if __name__ == "__main__":
