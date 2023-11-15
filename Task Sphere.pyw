@@ -81,7 +81,7 @@ class TaskTracker(tk.Tk):
         self.add_task_button = tk.Button(self, text="Add Task", command=self.add_task, font=self.customHeadingsFont)
         self.add_task_button.grid(row=1, column=2, padx=5)
 
-        self.tasks_listbox = tk.Listbox(self, font=self.customFont)
+        self.tasks_listbox = tk.Listbox(self, selectmode='extended', font=self.customFont)
         self.tasks_listbox.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=5)
         self.tasks_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
