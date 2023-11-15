@@ -48,6 +48,22 @@ class TaskDatabase:
         self.cursor.execute("UPDATE tasks SET day_assigned = NULL WHERE id = ?", (task_id,))
         self.conn.commit()
 
+    def get_task_by_id(self, task_id):
+        self.cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        return self.cursor.fetchone()
+
+    def update_task(self, task_id, new_requester, new_task_name):
+        self.cursor.execute("UPDATE tasks SET requester = ?, task_name = ? WHERE id = ?", (new_requester, new_task_name, task_id))
+        self.conn.commit()
+
+    def get_all_requesters(self):
+        self.cursor.execute("SELECT DISTINCT requester FROM tasks")
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def update_task(self, task_id, new_requester, new_task_name):
+        self.cursor.execute("UPDATE tasks SET requester = ?, task_name = ? WHERE id = ?", (new_requester, new_task_name, task_id))
+        self.conn.commit()      
+          
 class TaskTracker(tk.Tk):
     def __init__(self, db):
         super().__init__()
@@ -94,14 +110,17 @@ class TaskTracker(tk.Tk):
         self.delete_task_button = tk.Button(self, text="Delete Task", command=self.delete_task, font=self.customHeadingsFont)
         self.delete_task_button.grid(row=3, column=2, pady=5)
 
+        self.edit_task_button = tk.Button(self, text="Edit Task", command=self.edit_task, font=self.customHeadingsFont)
+        self.edit_task_button.grid(row=4, column=2, padx=5)
+        
         self.day_dropdown = ttk.Combobox(self, values=["Day 1", "Day 2", "Day 3", "Day 4", "Day 5"], font=self.customHeadingsFont)
         self.day_dropdown.grid(row=4, column=0, columnspan=2, sticky='we', pady=5)
 
         self.assign_day_button = tk.Button(self, text="Assign Day", command=self.assign_day_to_task, font=self.customHeadingsFont)
-        self.assign_day_button.grid(row=4, column=2, padx=5)
+        self.assign_day_button.grid(row=5, column=2, padx=5)
         
         self.unassign_day_button = tk.Button(self, text="Unassign Day", command=self.unassign_day_from_task, font=self.customHeadingsFont)
-        self.unassign_day_button.grid(row=5, column=2, padx=5)
+        self.unassign_day_button.grid(row=6, column=2, padx=5)
         
         self.view_days_button = tk.Button(self, text="View Daily Task Schedule", command=self.view_tasks_by_day, font=self.customHeadingsFont)
         self.view_days_button.grid(row=5, column=0, columnspan=3, pady=5)
@@ -191,6 +210,53 @@ class TaskTracker(tk.Tk):
         self.load_tasks()
         self.refresh_day_windows()
 
+    def edit_task(self):
+        selected_items = self.tasks_listbox.curselection()
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select a task to edit.")
+            return
+        elif len(selected_items) > 1:
+            messagebox.showwarning("Warning", "Please select only one task to edit.")
+            return
+
+        task_id = self.tasks_listbox.get(selected_items[0]).split(":")[0]
+        task = self.db.get_task_by_id(task_id)
+        if task:
+            self.open_edit_task_dialog(task)
+
+    def open_edit_task_dialog(self, task):
+        edit_window = tk.Toplevel(self)
+        edit_window.title("Edit Task")
+
+        # Label for requester
+        requester_label = tk.Label(edit_window, text="Requester:", font=self.customHeadingsFont)
+        requester_label.pack(pady=(10, 0))
+
+        # Dropdown for selecting requester
+        requester_combobox = ttk.Combobox(edit_window)
+        requesters = self.db.get_all_requesters()  
+        requester_combobox['values'] = requesters
+        requester_combobox.set(task[1])  # Set the current requester
+        requester_combobox.pack(pady=10)
+
+        # Text widget for task name
+        task_name_label = tk.Label(edit_window, text="Task Name:", font=self.customHeadingsFont)
+        task_name_label.pack(pady=(10, 0))
+
+        task_name_text = tk.Text(edit_window, height=1, width=50, font=self.customFont, wrap='none')
+        task_name_text.insert('1.0', task[2])
+        task_name_text.pack(side='left', fill='both', expand=True, pady=10)
+
+        # Save button
+        save_button = tk.Button(edit_window, text="Save Changes", command=lambda: self.save_task_changes(task[0], requester_combobox.get(), task_name_text.get("1.0", 'end-1c')))
+        save_button.pack(pady=10)
+
+    def save_task_changes(self, task_id, new_requester, new_task_name):
+        # Update the task in the database
+        self.db.update_task(task_id, new_requester, new_task_name)
+        self.load_tasks()
+        self.refresh_day_windows()
+        
     def assign_day_to_task(self):
         selected_items = self.tasks_listbox.curselection()
         day = self.day_dropdown.get()
