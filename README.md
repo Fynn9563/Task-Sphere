@@ -10,7 +10,7 @@ Task Sphere is a simple yet powerful application that helps you keep track of ta
 - **Day Views:** Open separate windows to view tasks scheduled for each day.
 - **Persistent Storage:** Uses SQLite database to store tasks persistently.
   
-Certainly! Here's a detailed guide for someone who may not be familiar with using the Command Prompt or Terminal:
+Here's a detailed guide for someone who may not be familiar with using the Command Prompt or Terminal:
 
 ## Installation
 
