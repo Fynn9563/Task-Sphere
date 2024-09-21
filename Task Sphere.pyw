@@ -1,11 +1,11 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, simpledialog
 import tkinter.font as tkFont
 import sqlite3
 
 class TaskDatabase:
     """
-    Handles all database operations related to tasks.
+    Handles all database operations related to tasks, projects, and requesters.
     """
     def __init__(self, db_path):
         self.db_path = db_path
@@ -13,78 +13,176 @@ class TaskDatabase:
 
     def setup_database(self):
         """
-        Creates the tasks table if it doesn't exist.
+        Sets up the database schema and performs data migration.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+
+            # Enable foreign key constraints
+            cursor.execute("PRAGMA foreign_keys = ON;")
+
+            # Create requesters table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS requesters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE
+                )
+            ''')
+
+            # Ensure default requester exists
+            default_requester_name = 'Default Requester'
+            cursor.execute("INSERT OR IGNORE INTO requesters (name) VALUES (?)", (default_requester_name,))
+            cursor.execute("SELECT id FROM requesters WHERE name = ?", (default_requester_name,))
+            default_requester_id = cursor.fetchone()[0]
+
+            # Create projects table with UNIQUE constraint
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_name TEXT NOT NULL,
+                    requester_id INTEGER NOT NULL,
+                    UNIQUE(project_name, requester_id),
+                    FOREIGN KEY(requester_id) REFERENCES requesters(id)
+                )
+            ''')
+
+            # Ensure default project exists
+            default_project_name = 'Default Project'
+            cursor.execute("INSERT OR IGNORE INTO projects (project_name, requester_id) VALUES (?, ?)",
+                           (default_project_name, default_requester_id))
+            cursor.execute("SELECT id FROM projects WHERE project_name = ? AND requester_id = ?",
+                           (default_project_name, default_requester_id))
+            default_project_id = cursor.fetchone()[0]
+
+            # Create tasks table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    requester TEXT NOT NULL,
                     task_name TEXT NOT NULL,
                     status BOOLEAN NOT NULL DEFAULT 0,
-                    day_assigned TEXT
+                    day_assigned TEXT,
+                    project_id INTEGER,
+                    requester_id INTEGER,
+                    FOREIGN KEY(project_id) REFERENCES projects(id),
+                    FOREIGN KEY(requester_id) REFERENCES requesters(id)
                 )
             ''')
+
+            # Check if 'project_id' column exists in 'tasks' table
+            cursor.execute("PRAGMA table_info(tasks)")
+            columns = [info[1] for info in cursor.fetchall()]
+
+            if 'requester_id' not in columns:
+                cursor.execute("ALTER TABLE tasks ADD COLUMN requester_id INTEGER")
+                # Assign default requester to existing tasks where requester_id is NULL
+                cursor.execute("UPDATE tasks SET requester_id = ? WHERE requester_id IS NULL", (default_requester_id,))
+
             conn.commit()
 
-    def get_requesters(self):
+    def add_requester(self, requester_name):
+        requester_name = requester_name.strip()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO requesters (name) VALUES (?)",
+                (requester_name,)
+            )
+            conn.commit()
+
+    def get_all_requesters(self):
         """
-        Retrieves a list of distinct requesters.
+        Retrieves all requesters.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT requester FROM tasks ORDER BY requester")
-            return [row[0] for row in cursor.fetchall()]
+            cursor.execute("SELECT id, name FROM requesters ORDER BY name")
+            return cursor.fetchall()
 
-    def get_tasks(self, filter_requester=None, search_keyword=None, filter_status=None, only_assigned=False):
+    def add_project(self, project_name, requester_id):
         """
-        Retrieves tasks, optionally filtered by requester, search keyword, status, and assignment.
+        Adds a new project under a requester.
         """
-        query = "SELECT id, requester, task_name, status, day_assigned FROM tasks"
-        conditions = []
-        parameters = []
-
-        if filter_requester and filter_requester != "All":
-            conditions.append("requester = ?")
-            parameters.append(filter_requester)
-        
-        if search_keyword:
-            conditions.append("(requester LIKE ? OR task_name LIKE ?)")
-            parameters.extend([f"%{search_keyword}%", f"%{search_keyword}%"])
-
-        if filter_status is not None:
-            conditions.append("status = ?")
-            parameters.append(filter_status)
-        
-        if only_assigned:
-            conditions.append("day_assigned IS NOT NULL")
-
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        query += " ORDER BY requester"
-
-        print(f"Executing Query: {query} with parameters {parameters}")
-
+        project_name = project_name.strip()  # Strip whitespace
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(query, tuple(parameters))
-            results = cursor.fetchall()
-            print(f"Retrieved {len(results)} tasks from the database.")
-            return results
+            cursor.execute(
+                "INSERT INTO projects (project_name, requester_id) VALUES (?, ?)",
+                (project_name, requester_id)
+            )
+            conn.commit()
 
-    def add_task(self, requester, task_name):
+    def get_projects_by_requester(self, requester_id):
+        """
+        Retrieves all projects for a given requester.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, project_name FROM projects WHERE requester_id = ? ORDER BY project_name",
+                (requester_id,)
+            )
+            return cursor.fetchall()
+
+    def add_task(self, task_name, requester_id=None, project_id=None):
         """
         Adds a new task to the database.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO tasks (requester, task_name, status) VALUES (?, ?, ?)",
-                (requester, task_name, False)
+                "INSERT INTO tasks (task_name, status, requester_id, project_id) VALUES (?, ?, ?, ?)",
+                (task_name, False, requester_id, project_id)
             )
             conn.commit()
+
+    def get_tasks(self, requester_id=None, project_id=None, search_keyword=None, filter_status=None, only_assigned=False):
+        """
+        Retrieves tasks, optionally filtered by requester, project, search keyword, status, and assignment.
+        """
+        query = '''
+            SELECT tasks.id, 
+                   COALESCE(task_requesters.name, requesters.name) as requester_name,
+                   projects.project_name, 
+                   tasks.task_name, 
+                   tasks.status, 
+                   tasks.day_assigned
+            FROM tasks
+            LEFT JOIN projects ON tasks.project_id = projects.id
+            LEFT JOIN requesters ON projects.requester_id = requesters.id
+            LEFT JOIN requesters AS task_requesters ON tasks.requester_id = task_requesters.id
+        '''
+        conditions = []
+        parameters = []
+
+        if requester_id and requester_id != "All":
+            conditions.append("(requesters.id = ? OR task_requesters.id = ?)")
+            parameters.extend([requester_id, requester_id])
+
+        if project_id and project_id != "All":
+            conditions.append("projects.id = ?")
+            parameters.append(project_id)
+
+        if search_keyword:
+            conditions.append("(tasks.task_name LIKE ?)")
+            parameters.append(f"%{search_keyword}%")
+
+        if filter_status is not None:
+            conditions.append("tasks.status = ?")
+            parameters.append(filter_status)
+
+        if only_assigned:
+            conditions.append("tasks.day_assigned IS NOT NULL")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY requester_name, projects.project_name, tasks.task_name"
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, tuple(parameters))
+            results = cursor.fetchall()
+            return results
 
     def delete_task(self, task_id):
         """
@@ -128,29 +226,79 @@ class TaskDatabase:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            cursor.execute('''
+                SELECT tasks.id, 
+                       COALESCE(task_requesters.name, requesters.name) as requester_name,
+                       projects.project_name, 
+                       tasks.task_name, 
+                       tasks.status, 
+                       tasks.day_assigned
+                FROM tasks
+                LEFT JOIN projects ON tasks.project_id = projects.id
+                LEFT JOIN requesters ON projects.requester_id = requesters.id
+                LEFT JOIN requesters AS task_requesters ON tasks.requester_id = task_requesters.id
+                WHERE tasks.id = ?
+            ''', (task_id,))
             return cursor.fetchone()
 
-    def update_task(self, task_id, new_requester, new_task_name):
+    def update_task(self, task_id, new_task_name, requester_id, project_id):
         """
-        Updates the requester and task name of a task.
+        Updates the task name, requester, and project of a task.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE tasks SET requester = ?, task_name = ? WHERE id = ?",
-                (new_requester, new_task_name, task_id)
+                "UPDATE tasks SET task_name = ?, requester_id = ?, project_id = ? WHERE id = ?",
+                (new_task_name, requester_id, project_id, task_id)
             )
             conn.commit()
 
-    def get_all_requesters(self):
+    def has_tasks(self, project_id):
         """
-        Retrieves all distinct requesters.
+        Checks if a project has any associated tasks.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT requester FROM tasks")
-            return [row[0] for row in cursor.fetchall()]
+            cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,))
+            count = cursor.fetchone()[0]
+            return count > 0
+
+    def delete_project(self, project_id):
+        """
+        Deletes a project by its ID.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+
+    def delete_tasks_by_project(self, project_id):
+        """
+        Deletes all tasks associated with a project.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
+            conn.commit()
+
+    def has_projects(self, requester_id):
+        """
+        Checks if a requester has any associated projects.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM projects WHERE requester_id = ?", (requester_id,))
+            count = cursor.fetchone()[0]
+            return count > 0
+
+    def delete_requester(self, requester_id):
+        """
+        Deletes a requester by its ID.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM requesters WHERE id = ?", (requester_id,))
+            conn.commit()
 
 class TaskTracker(tk.Tk):
     """
@@ -163,18 +311,19 @@ class TaskTracker(tk.Tk):
         self.customHeadingsFont = tkFont.Font(family="Helvetica", size=12, weight="bold")
         
         self.title("Task Sphere")
-        self.geometry("1100x600")
+        self.geometry("1400x700")
         self.resizable(True, True)
         self.style = ttk.Style(self)
-        self.style.theme_use('clam')  # You can choose other themes like 'default', 'vista', 'xpnative'
+        self.style.theme_use('clam')
 
-        self.day_windows = {}  # Keeps track of day schedule windows
+        self.day_windows = {}  # Mapping from window to day_trees
 
         self.create_widgets()
-        self.load_tasks()
         self.refresh_requester_dropdown()
+        self.refresh_requester_filter()
+        self.load_tasks()
 
-        # Bind the window close event to ensure the database connection is closed
+        # Bind the window close event
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def create_widgets(self):
@@ -190,53 +339,90 @@ class TaskTracker(tk.Tk):
         requester_label.grid(row=0, column=0, sticky='w', padx=(0,5))
 
         self.requester_entry = ttk.Combobox(top_frame, state="readonly")
-        self.requester_entry.grid(row=0, column=1, sticky='w', padx=(0,15))
-        self.requester_entry.bind('<<ComboboxSelected>>', self.filter_tasks)
+        self.requester_entry.grid(row=0, column=1, sticky='w', padx=(0,5))
+        self.requester_entry.bind('<<ComboboxSelected>>', self.refresh_project_dropdown)
+
+        # Add Requester Button
+        add_requester_button = ttk.Button(top_frame, text="Add Requester", command=self.add_requester)
+        add_requester_button.grid(row=0, column=2, sticky='w', padx=(0,10))
+
+        # Delete Requester Button
+        delete_requester_button = ttk.Button(top_frame, text="Delete Requester", command=self.delete_requester)
+        delete_requester_button.grid(row=0, column=3, sticky='w', padx=(0,10))
+
+        # Project Label and Combobox
+        project_label = ttk.Label(top_frame, text="Project:", font=self.customHeadingsFont)
+        project_label.grid(row=0, column=4, sticky='w', padx=(10,5))
+
+        self.project_entry = ttk.Combobox(top_frame, state="readonly")
+        self.project_entry.grid(row=0, column=5, sticky='w', padx=(0,5))
+
+        # Add Project Button
+        add_project_button = ttk.Button(top_frame, text="Add Project", command=self.add_project)
+        add_project_button.grid(row=0, column=6, sticky='w', padx=(0,10))
+
+        # Delete Project Button
+        delete_project_button = ttk.Button(top_frame, text="Delete Project", command=self.delete_project)
+        delete_project_button.grid(row=0, column=7, sticky='w', padx=(0,10))
 
         # Task Name Label and Entry
         task_name_label = ttk.Label(top_frame, text="Task Name:", font=self.customHeadingsFont)
-        task_name_label.grid(row=0, column=2, sticky='w', padx=(0,5))
+        task_name_label.grid(row=0, column=8, sticky='w', padx=(10,5))
 
         self.task_name_entry = ttk.Entry(top_frame, width=30)
-        self.task_name_entry.grid(row=0, column=3, sticky='w', padx=(0,15))
+        self.task_name_entry.grid(row=0, column=9, sticky='w', padx=(0,5))
 
         # Add Task Button
         add_task_button = ttk.Button(top_frame, text="Add Task", command=self.add_task)
-        add_task_button.grid(row=0, column=4, sticky='w')
+        add_task_button.grid(row=0, column=10, sticky='w')
 
-        # Search Label and Entry
-        search_label = ttk.Label(top_frame, text="Search:", font=self.customHeadingsFont)
-        search_label.grid(row=1, column=0, sticky='w', padx=(0,5), pady=(10,0))
+        # Search and Filters Frame
+        search_frame = ttk.Frame(self)
+        search_frame.pack(side='top', fill='x', padx=10, pady=5)
 
-        self.search_entry = ttk.Entry(top_frame, width=30)
-        self.search_entry.grid(row=1, column=1, sticky='w', padx=(0,15), pady=(10,0))
+        # Search Entry
+        search_label = ttk.Label(search_frame, text="Search:", font=self.customHeadingsFont)
+        search_label.grid(row=0, column=0, sticky='w', padx=(0,5))
+
+        self.search_entry = ttk.Entry(search_frame)
+        self.search_entry.grid(row=0, column=1, sticky='w', padx=(0,15))
         self.search_entry.bind('<KeyRelease>', self.filter_tasks)
 
-        # Status Filter
-        status_label = ttk.Label(top_frame, text="Status:", font=self.customHeadingsFont)
-        status_label.grid(row=1, column=2, sticky='w', padx=(0,5), pady=(10,0))
+        # Requester Filter
+        requester_filter_label = ttk.Label(search_frame, text="Requester:", font=self.customHeadingsFont)
+        requester_filter_label.grid(row=0, column=2, sticky='w', padx=(0,5))
 
-        self.status_filter = ttk.Combobox(top_frame, state="readonly", values=["All", "Done", "Not Done"])
-        self.status_filter.current(0)
-        self.status_filter.grid(row=1, column=3, sticky='w', padx=(0,15), pady=(10,0))
+        self.requester_filter = ttk.Combobox(search_frame, state="readonly")
+        self.requester_filter.grid(row=0, column=3, sticky='w', padx=(0,15))
+        self.requester_filter.bind('<<ComboboxSelected>>', self.refresh_project_filter)
+
+        # Project Filter
+        project_filter_label = ttk.Label(search_frame, text="Project:", font=self.customHeadingsFont)
+        project_filter_label.grid(row=0, column=4, sticky='w', padx=(0,5))
+
+        self.project_filter = ttk.Combobox(search_frame, state="readonly")
+        self.project_filter.grid(row=0, column=5, sticky='w', padx=(0,15))
+        self.project_filter.bind('<<ComboboxSelected>>', self.filter_tasks)
+
+        # Status Filter
+        status_filter_label = ttk.Label(search_frame, text="Status:", font=self.customHeadingsFont)
+        status_filter_label.grid(row=0, column=6, sticky='w', padx=(0,5))
+
+        self.status_filter = ttk.Combobox(search_frame, state="readonly", values=["All", "Done", "Not Done"])
+        self.status_filter.set("All")
+        self.status_filter.grid(row=0, column=7, sticky='w', padx=(0,15))
         self.status_filter.bind('<<ComboboxSelected>>', self.filter_tasks)
 
-        # Reset Filters Button
-        reset_filters_button = ttk.Button(top_frame, text="Reset Filters", command=self.reset_filters)
-        reset_filters_button.grid(row=1, column=4, sticky='w', padx=(0,5), pady=(10,0))
-
-        # New Filter: Only Show Assigned Tasks
+        # Only Assigned Checkbox
         self.only_assigned_var = tk.BooleanVar()
-        only_assigned_check = ttk.Checkbutton(
-            top_frame, 
-            text="Only Show Assigned Tasks",
-            variable=self.only_assigned_var,
-            command=self.filter_tasks,
-            style='TCheckbutton'
-        )
-        only_assigned_check.grid(row=2, column=0, columnspan=2, sticky='w', padx=(0,5), pady=(10,0))
+        only_assigned_checkbox = ttk.Checkbutton(search_frame, text="Only Assigned", variable=self.only_assigned_var, command=self.filter_tasks)
+        only_assigned_checkbox.grid(row=0, column=8, sticky='w', padx=(0,15))
 
-        # Middle Frame for Actions
+        # Reset Filters Button
+        reset_filters_button = ttk.Button(search_frame, text="Reset Filters", command=self.reset_filters)
+        reset_filters_button.grid(row=0, column=9, sticky='w')
+
+        # Action Buttons Frame
         action_frame = ttk.Frame(self)
         action_frame.pack(side='top', fill='x', padx=10, pady=5)
 
@@ -260,7 +446,7 @@ class TaskTracker(tk.Tk):
         self.edit_task_button.grid(row=0, column=3, padx=5)
         self.edit_task_button.state(['disabled'])
 
-        # Day Assignment Label and Combobox
+        # Assign Day Dropdown and Label
         day_label = ttk.Label(action_frame, text="Assign Day:", font=self.customHeadingsFont)
         day_label.grid(row=0, column=4, padx=(20,5))
 
@@ -280,7 +466,8 @@ class TaskTracker(tk.Tk):
         unassign_day_button.grid(row=0, column=7, padx=5)
 
         # View Daily Task Schedule Button
-        view_days_button = ttk.Button(action_frame, text="View Daily Task Schedule", command=self.view_tasks_by_day)
+        view_days_button = ttk.Button(action_frame, text="View Daily Task Schedule",
+                                      command=self.view_tasks_by_day)
         view_days_button.grid(row=0, column=8, padx=(20,5))
 
         # Main Frame for Treeview
@@ -297,7 +484,7 @@ class TaskTracker(tk.Tk):
         # Treeview for displaying tasks
         self.tree = ttk.Treeview(
             main_frame, 
-            columns=("ID", "Requester", "Task Name", "Status", "Day Assigned"),
+            columns=("ID", "Requester", "Project", "Task Name", "Status", "Day Assigned"),
             show='headings', 
             yscrollcommand=self.tree_scroll_y.set,
             xscrollcommand=self.tree_scroll_x.set
@@ -310,6 +497,7 @@ class TaskTracker(tk.Tk):
         # Define columns
         self.tree.heading("ID", text="ID", command=lambda: self.sort_tree("ID", False))
         self.tree.heading("Requester", text="Requester", command=lambda: self.sort_tree("Requester", False))
+        self.tree.heading("Project", text="Project", command=lambda: self.sort_tree("Project", False))
         self.tree.heading("Task Name", text="Task Name", command=lambda: self.sort_tree("Task Name", False))
         self.tree.heading("Status", text="Status", command=lambda: self.sort_tree("Status", False))
         self.tree.heading("Day Assigned", text="Day Assigned", command=lambda: self.sort_tree("Day Assigned", False))
@@ -317,6 +505,7 @@ class TaskTracker(tk.Tk):
         # Define column widths
         self.tree.column("ID", width=50, anchor='center')
         self.tree.column("Requester", width=150, anchor='w')
+        self.tree.column("Project", width=150, anchor='w')
         self.tree.column("Task Name", width=300, anchor='w')
         self.tree.column("Status", width=100, anchor='center')
         self.tree.column("Day Assigned", width=100, anchor='center')
@@ -346,18 +535,221 @@ class TaskTracker(tk.Tk):
             self.delete_task_button.state(['disabled'])
             self.edit_task_button.state(['disabled'])
 
+    def refresh_requester_dropdown(self):
+        """
+        Refreshes the requester dropdown with current requesters.
+        """
+        requesters = self.db.get_all_requesters()
+        self.requester_entry['values'] = [name for (id, name) in requesters]
+        if requesters:
+            self.requester_entry.set(requesters[0][1])
+            self.refresh_project_dropdown()
+        else:
+            self.requester_entry['values'] = []
+            self.requester_entry.set("")
+
+    def refresh_requester_filter(self):
+        """
+        Refreshes the requester filter dropdown with current requesters.
+        """
+        requesters = [("All", "All")] + self.db.get_all_requesters()
+        self.requester_filter['values'] = [name for (id, name) in requesters]
+        self.requester_filter.set("All")
+        self.refresh_project_filter()
+
+    def refresh_project_dropdown(self, event=None):
+        """
+        Refreshes the project dropdown based on selected requester.
+        """
+        requester_name = self.requester_entry.get().strip()  # Strip whitespace
+        if requester_name:
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}
+            requester_id = requester_dict.get(requester_name)
+            projects = self.db.get_projects_by_requester(requester_id)
+            self.project_entry['values'] = [name.strip() for (id, name) in projects]
+            if projects:
+                self.project_entry.set(projects[0][1].strip())
+            else:
+                self.project_entry['values'] = []
+                self.project_entry.set("")
+        else:
+            self.project_entry['values'] = []
+            self.project_entry.set("")
+
+    def refresh_project_filter(self, event=None):
+        """
+        Refreshes the project filter dropdown based on selected requester filter.
+        """
+        requester_name = self.requester_filter.get().strip()  # Strip whitespace
+        if requester_name != "All":
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}  # Strip keys
+            requester_id = requester_dict.get(requester_name)
+            if requester_id:
+                projects = self.db.get_projects_by_requester(requester_id)
+                project_names = [project[1].strip() for project in projects]  # Strip project names
+                self.project_filter['values'] = ["All"] + project_names
+                self.project_filter.set("All")
+            else:
+                self.project_filter['values'] = ["All"]
+                self.project_filter.set("All")
+        else:
+            self.project_filter['values'] = ["All"]
+            self.project_filter.set("All")
+        self.filter_tasks()
+
+    def add_project(self):
+        """
+        Opens a dialog to add a new project under the selected requester.
+        """
+        requester_name = self.requester_entry.get()
+        if not requester_name:
+            messagebox.showwarning("Input Error", "Please select a requester first.")
+            return
+
+        project_name = simpledialog.askstring("Add Project", "Enter new project name:")
+        if project_name:
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}
+            requester_id = requester_dict.get(requester_name.strip())
+            self.db.add_project(project_name.strip(), requester_id)
+            self.refresh_project_dropdown()
+            self.refresh_project_filter()
+            messagebox.showinfo("Success", "Project added successfully.")
+
+    def delete_project(self):
+        """
+        Deletes the selected project after confirmation.
+        """
+        requester_name = self.requester_entry.get().strip()
+        project_name = self.project_entry.get().strip()
+
+        if not project_name:
+            messagebox.showwarning("Selection Error", "Please select a project to delete.")
+            return
+
+        # Get requester_id
+        requesters = self.db.get_all_requesters()
+        requester_dict = {name.strip(): id for (id, name) in requesters}
+        requester_id = requester_dict.get(requester_name)
+
+        if not requester_id:
+            messagebox.showerror("Error", "Requester not found.")
+            return
+
+        # Get project_id
+        projects = self.db.get_projects_by_requester(requester_id)
+        project_dict = {name.strip(): id for (id, name) in projects}
+        project_id = project_dict.get(project_name)
+
+        if not project_id:
+            messagebox.showerror("Error", "Project not found.")
+            return
+
+        # Check if the project has associated tasks
+        if self.db.has_tasks(project_id):
+            messagebox.showwarning(
+                "Cannot Delete",
+                "This project has associated tasks. Please delete or reassign them before deleting the project."
+            )
+            return
+
+        # Confirm deletion
+        confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the project '{project_name}'?")
+        if not confirm:
+            return
+
+        # Delete the project
+        self.db.delete_project(project_id)
+
+        # Refresh the UI
+        self.refresh_project_dropdown()
+        self.refresh_project_filter()
+        self.load_tasks()
+        messagebox.showinfo("Success", f"Project '{project_name}' has been deleted.")
+
+    def delete_requester(self):
+        """
+        Deletes the selected requester after confirmation.
+        """
+        requester_name = self.requester_entry.get().strip()
+
+        if not requester_name:
+            messagebox.showwarning("Selection Error", "Please select a requester to delete.")
+            return
+
+        # Get requester_id
+        requesters = self.db.get_all_requesters()
+        requester_dict = {name.strip(): id for (id, name) in requesters}
+        requester_id = requester_dict.get(requester_name)
+
+        if not requester_id:
+            messagebox.showerror("Error", "Requester not found.")
+            return
+
+        # Check if the requester has associated projects
+        if self.db.has_projects(requester_id):
+            messagebox.showwarning(
+                "Cannot Delete",
+                "This requester has associated projects. Please delete or reassign them before deleting the requester."
+            )
+            return
+
+        # Confirm deletion
+        confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the requester '{requester_name}'?")
+        if not confirm:
+            return
+
+        # Delete the requester
+        self.db.delete_requester(requester_id)
+
+        # Refresh the UI
+        self.refresh_requester_dropdown()
+        self.refresh_requester_filter()
+        self.load_tasks()
+        messagebox.showinfo("Success", f"Requester '{requester_name}' has been deleted.")
+
+    def add_requester(self):
+        """
+        Opens a dialog to add a new requester.
+        """
+        requester_name = simpledialog.askstring("Add Requester", "Enter new requester name:")
+        if requester_name:
+            self.db.add_requester(requester_name.strip())
+            self.refresh_requester_dropdown()
+            self.refresh_requester_filter()
+            messagebox.showinfo("Success", "Requester added successfully.")
+
     def add_task(self):
         """
         Adds a new task to the database and updates the UI.
         """
-        requester = self.requester_entry.get().strip()
-        task_name = self.task_name_entry.get().strip()
-        if not requester or not task_name:
-            messagebox.showwarning("Input Error", "Please enter both requester and task name.")
+        task_name = self.task_name_entry.get().strip()  # Strip whitespace
+        requester_name = self.requester_entry.get().strip()  # Strip whitespace
+        project_name = self.project_entry.get().strip()  # Strip whitespace
+
+        if not task_name:
+            messagebox.showwarning("Input Error", "Please enter a task name.")
             return
-        self.db.add_task(requester, task_name)
+
+        # Get requester_id
+        requester_id = None
+        if requester_name:
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}
+            requester_id = requester_dict.get(requester_name)
+
+        # Get project_id if project is selected
+        project_id = None
+        if project_name and requester_id:
+            projects = self.db.get_projects_by_requester(requester_id)
+            project_dict = {name.strip(): id for (id, name) in projects}
+            project_id = project_dict.get(project_name)
+
+        # Add task with requester_id and project_id
+        self.db.add_task(task_name, requester_id, project_id)
         self.load_tasks()
-        self.refresh_requester_dropdown()
         self.task_name_entry.delete(0, tk.END)
         messagebox.showinfo("Success", "Task added successfully.")
 
@@ -368,7 +760,8 @@ class TaskTracker(tk.Tk):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        filter_requester = self.requester_entry.get() if self.requester_entry.get() else "All"
+        requester_name = self.requester_filter.get() if self.requester_filter.get() else "All"
+        project_name = self.project_filter.get() if self.project_filter.get() else "All"
         search_keyword = self.search_entry.get().strip()
         filter_status = None
         if self.status_filter.get() == "Done":
@@ -378,32 +771,37 @@ class TaskTracker(tk.Tk):
 
         only_assigned = self.only_assigned_var.get()
 
-        tasks = self.db.get_tasks(filter_requester, search_keyword, filter_status, only_assigned)
-        
-        # Debugging Statements
-        print(f"\nLoading {len(tasks)} tasks with requester='{filter_requester}', search='{search_keyword}', status='{filter_status}', only_assigned='{only_assigned}'")
+        # Get requester_id
+        requester_id = None
+        if requester_name != "All":
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}
+            requester_id = requester_dict.get(requester_name.strip())
+
+        # Get project_id
+        project_id = None
+        if project_name != "All" and requester_id:
+            projects = self.db.get_projects_by_requester(requester_id)
+            project_dict = {name.strip(): id for (id, name) in projects}
+            project_id = project_dict.get(project_name.strip())
+
+        tasks = self.db.get_tasks(requester_id, project_id, search_keyword, filter_status, only_assigned)
+
         for task in tasks:
-            status = "Done ✔" if task[3] else "Not Done ❌"
-            day_assigned = task[4] if task[4] else ""
-            print(f"Task ID: {task[0]}, Requester: {task[1]}, Task Name: {task[2]}, Status: {status}, Day Assigned: {day_assigned}")
-            self.tree.insert("", tk.END, values=(task[0], task[1], task[2], status, day_assigned),
-                             tags=('done' if task[3] else 'not_done',))
-        
+            status = "Done ✔" if task[4] else "Not Done ❌"
+            day_assigned = task[5] if task[5] else ""
+            requester_display = task[1] if task[1] else "No Requester"
+            project_display = task[2] if task[2] else "No Project"
+            self.tree.insert("", tk.END, values=(task[0], requester_display, project_display, task[3], status, day_assigned),
+                             tags=('done' if task[4] else 'not_done',))
+
         # Apply tag styling
         self.tree.tag_configure('done', foreground='dark green')
         self.tree.tag_configure('not_done', foreground='red')
 
-    def refresh_requester_dropdown(self):
-        """
-        Refreshes the requester dropdown with current requesters.
-        """
-        requesters = ["All"] + self.db.get_requesters()
-        self.requester_entry['values'] = requesters
-        self.requester_entry.set("All")
-
     def filter_tasks(self, event=None):
         """
-        Filters tasks based on requester, search keyword, status, and assignment.
+        Filters tasks based on various criteria.
         """
         self.load_tasks()
 
@@ -411,7 +809,8 @@ class TaskTracker(tk.Tk):
         """
         Resets all filters to their default states.
         """
-        self.requester_entry.set("All")
+        self.requester_filter.set("All")
+        self.project_filter.set("All")
         self.search_entry.delete(0, tk.END)
         self.status_filter.set("All")
         self.only_assigned_var.set(False)
@@ -483,13 +882,13 @@ class TaskTracker(tk.Tk):
         """
         edit_window = tk.Toplevel(self)
         edit_window.title("Edit Task")
-        edit_window.geometry("450x300")
+        edit_window.geometry("500x400")
         edit_window.resizable(False, False)
-        edit_window.grab_set()  # Make the edit window modal
+        edit_window.grab_set()
 
         # Apply the same style as the main UI
         style = ttk.Style(edit_window)
-        style.theme_use('clam')  # Ensure consistency with the main window
+        style.theme_use('clam')
 
         # Main Frame
         main_frame = ttk.Frame(edit_window, padding="20 20 20 20")
@@ -498,51 +897,115 @@ class TaskTracker(tk.Tk):
         # Configure grid
         main_frame.columnconfigure(1, weight=1)
 
+        # Task Name Label and Entry
+        task_name_label = ttk.Label(main_frame, text="Task Name:", font=self.customHeadingsFont)
+        task_name_label.grid(row=0, column=0, sticky='e', padx=(0,10), pady=(0,10))
+
+        task_name_entry = ttk.Entry(main_frame, font=self.customFont)
+        task_name_entry.insert(0, task[3])
+        task_name_entry.grid(row=0, column=1, sticky='we', pady=(0,10))
+
         # Requester Label and Combobox
         requester_label = ttk.Label(main_frame, text="Requester:", font=self.customHeadingsFont)
-        requester_label.grid(row=0, column=0, sticky='e', padx=(0,10), pady=(0,10))
+        requester_label.grid(row=1, column=0, sticky='e', padx=(0,10), pady=(0,10))
 
         requester_combobox = ttk.Combobox(main_frame, state="readonly")
         requesters = self.db.get_all_requesters()
-        requester_combobox['values'] = requesters
-        requester_combobox.set(task[1])  # Set current requester
-        requester_combobox.grid(row=0, column=1, sticky='we', pady=(0,10))
+        requester_combobox['values'] = [name.strip() for (id, name) in requesters]
+        if task[1]:
+            requester_combobox.set(task[1].strip())  # Set current requester
+        else:
+            requester_combobox.set('')  # No requester
+        requester_combobox.grid(row=1, column=1, sticky='we', pady=(0,10))
+        requester_combobox.bind('<<ComboboxSelected>>', lambda event: self.update_projects_in_edit_dialog(project_combobox, requester_combobox))
 
-        # Task Name Label and Entry
-        task_name_label = ttk.Label(main_frame, text="Task Name:", font=self.customHeadingsFont)
-        task_name_label.grid(row=1, column=0, sticky='e', padx=(0,10), pady=(0,10))
+        # Project Label and Combobox
+        project_label = ttk.Label(main_frame, text="Project:", font=self.customHeadingsFont)
+        project_label.grid(row=2, column=0, sticky='e', padx=(0,10), pady=(0,10))
 
-        task_name_entry = ttk.Entry(main_frame, font=self.customFont)
-        task_name_entry.insert(0, task[2])
-        task_name_entry.grid(row=1, column=1, sticky='we', pady=(0,10))
+        project_combobox = ttk.Combobox(main_frame, state="readonly")
+        project_combobox.grid(row=2, column=1, sticky='we', pady=(0,10))
+
+        # Initialize project_combobox with projects for current requester
+        self.update_projects_in_edit_dialog(project_combobox, requester_combobox, current_project_name=task[2])
 
         # Save Button
         save_button = ttk.Button(
             main_frame, text="Save Changes",
             command=lambda: self.save_task_changes(
                 task_id=task[0],
-                new_requester=requester_combobox.get().strip(),
                 new_task_name=task_name_entry.get().strip(),
+                new_requester_name=requester_combobox.get().strip(),
+                new_project_name=project_combobox.get().strip(),
                 window=edit_window
             )
         )
-        save_button.grid(row=2, column=0, columnspan=2, pady=20)
+        save_button.grid(row=3, column=0, columnspan=2, pady=20)
 
-        # Styling for Save Button
-        save_button_style = ttk.Style()
-        save_button_style.configure("TButton", font=('Helvetica', 12, 'bold'))
+    def update_projects_in_edit_dialog(self, project_combobox, requester_combobox, current_project_name=None):
+        """
+        Updates the project combobox in the edit dialog based on the selected requester.
+        """
+        requester_name = requester_combobox.get().strip()  # Strip whitespace
+        if requester_name:
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}  # Strip keys
+            requester_id = requester_dict.get(requester_name)
+            if requester_id:
+                projects = self.db.get_projects_by_requester(requester_id)
+                project_names = [project[1].strip() for project in projects]  # Strip project names
+                project_combobox['values'] = project_names
+                if current_project_name and current_project_name.strip() in project_names:
+                    project_combobox.set(current_project_name.strip())
+                else:
+                    project_combobox.set('')
+            else:
+                project_combobox['values'] = []
+                project_combobox.set('')
+        else:
+            project_combobox['values'] = []
+            project_combobox.set('')
 
-    def save_task_changes(self, task_id, new_requester, new_task_name, window):
+    def save_task_changes(self, task_id, new_task_name, new_requester_name, new_project_name, window):
         """
         Saves the changes made to a task.
         """
-        if not new_requester or not new_task_name:
-            messagebox.showwarning("Input Error", "Requester and Task Name cannot be empty.")
+        new_task_name = new_task_name.strip()  # Strip whitespace
+        new_requester_name = new_requester_name.strip()  # Strip whitespace
+        new_project_name = new_project_name.strip()  # Strip whitespace
+
+        if not new_task_name:
+            messagebox.showwarning("Input Error", "Task Name cannot be empty.")
             return
 
-        self.db.update_task(task_id, new_requester, new_task_name)
+        # Get requester_id
+        requester_id = None
+        if new_requester_name:
+            requesters = self.db.get_all_requesters()
+            requester_dict = {name.strip(): id for (id, name) in requesters}
+            requester_id = requester_dict.get(new_requester_name)
+            if not requester_id:
+                messagebox.showerror("Error", "Selected requester does not exist.")
+                return
+
+        # Get project_id
+        project_id = None
+        if new_project_name:
+            if requester_id:
+                projects = self.db.get_projects_by_requester(requester_id)
+                project_dict = {name.strip(): id for (id, name) in projects}
+                project_id = project_dict.get(new_project_name)
+                if not project_id:
+                    messagebox.showerror("Error", "Selected project does not exist.")
+                    return
+            else:
+                messagebox.showerror("Error", "Please select a requester for the project.")
+                return
+
+        # Update the task in the database
+        self.db.update_task(task_id, new_task_name, requester_id, project_id)
+
         self.load_tasks()
-        self.refresh_requester_dropdown()
         self.refresh_day_windows()
         messagebox.showinfo("Success", "Task has been updated.")
         window.destroy()
@@ -552,7 +1015,7 @@ class TaskTracker(tk.Tk):
         Assigns a selected day to selected tasks.
         """
         selected_items = self.tree.selection()
-        day = self.day_dropdown.get()
+        day = self.day_dropdown.get().strip().capitalize()
 
         if not selected_items:
             messagebox.showwarning("Selection Error", "Please select at least one task to assign a day.")
@@ -600,7 +1063,11 @@ class TaskTracker(tk.Tk):
         window.title("Daily Task Schedule")
         window.geometry("900x600")
         window.resizable(True, True)
-        window.grab_set()  # Make the window modal
+        window.grab_set()
+
+        # Store the mapping from days to tree widgets for this window
+        day_trees = {}
+        self.day_windows[window] = day_trees
 
         # Configure grid layout
         window.columnconfigure(0, weight=1)
@@ -610,11 +1077,10 @@ class TaskTracker(tk.Tk):
         notebook = ttk.Notebook(window)
         notebook.grid(row=0, column=0, sticky='nsew')
 
-        # Updated days list to include all weekdays and weekends
+        # Days of the week
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
         for day in days:
-            print(f"Creating tab for {day}")  # Debugging Statement
             frame = ttk.Frame(notebook)
             frame.pack(fill='both', expand=True)
             notebook.add(frame, text=day)
@@ -629,7 +1095,7 @@ class TaskTracker(tk.Tk):
             # Treeview for displaying tasks
             tree = ttk.Treeview(
                 frame, 
-                columns=("ID", "Requester", "Task Name", "Status"),
+                columns=("ID", "Requester", "Project", "Task Name", "Status"),
                 show='headings', 
                 yscrollcommand=tree_scroll_y.set,
                 xscrollcommand=tree_scroll_x.set
@@ -642,34 +1108,31 @@ class TaskTracker(tk.Tk):
             # Define columns
             tree.heading("ID", text="ID")
             tree.heading("Requester", text="Requester")
+            tree.heading("Project", text="Project")
             tree.heading("Task Name", text="Task Name")
             tree.heading("Status", text="Status")
 
             # Define column widths
             tree.column("ID", width=50, anchor='center')
             tree.column("Requester", width=150, anchor='w')
+            tree.column("Project", width=150, anchor='w')
             tree.column("Task Name", width=400, anchor='w')
             tree.column("Status", width=100, anchor='center')
 
             # Insert tasks for the specific day
-            tasks = self.db.get_tasks(
-                filter_requester=None, 
-                search_keyword=None, 
-                filter_status=None, 
-                only_assigned=True
-            )
+            tasks = self.db.get_tasks(only_assigned=True)
             for task in tasks:
-                task_day = task[4].strip().lower() if task[4] else ""
+                task_day = task[5].strip().lower() if task[5] else ""
                 current_day = day.lower()
-                print(f"Checking Task ID {task[0]} assigned to {task[4]} against {day}")  # Debugging Statement
                 if task_day == current_day:
-                    status = "Done ✔" if task[3] else "Not Done ❌"
-                    print(f"Inserting Task ID {task[0]} into {day}")  # Debugging Statement
+                    status = "Done ✔" if task[4] else "Not Done ❌"
+                    requester_display = task[1] if task[1] else "No Requester"
+                    project_display = task[2] if task[2] else "No Project"
                     tree.insert(
                         "", 
                         tk.END, 
-                        values=(task[0], task[1], task[2], status),
-                        tags=('done' if task[3] else 'not_done',)
+                        values=(task[0], requester_display, project_display, task[3], status),
+                        tags=('done' if task[4] else 'not_done',)
                     )
             
             # Apply tag styling
@@ -678,11 +1141,49 @@ class TaskTracker(tk.Tk):
 
             # Handle case when no tasks are assigned to the day
             if not tree.get_children():
-                tree.insert("", tk.END, values=("", "No Tasks Assigned", "", ""),
+                tree.insert("", tk.END, values=("", "No Tasks Assigned", "", "", ""),
                             tags=('no_tasks',))
                 tree.tag_configure('no_tasks', foreground='gray')
 
-        self.day_windows[window] = notebook
+            # Store the tree widget in day_trees
+            day_trees[day] = tree
+
+    def refresh_day_windows(self):
+        """
+        Refreshes all open day schedule windows.
+        """
+        for window, day_trees in self.day_windows.items():
+            if window.winfo_exists():
+                for day, tree in day_trees.items():
+                    # Clear the tree
+                    for item in tree.get_children():
+                        tree.delete(item)
+
+                    # Fetch tasks assigned to the current day
+                    tasks = self.db.get_tasks(only_assigned=True)
+                    for task in tasks:
+                        task_day = task[5].strip().lower() if task[5] else ""
+                        current_day = day.lower()
+                        if task_day == current_day:
+                            status = "Done ✔" if task[4] else "Not Done ❌"
+                            requester_display = task[1] if task[1] else "No Requester"
+                            project_display = task[2] if task[2] else "No Project"
+                            tree.insert(
+                                '', 
+                                tk.END, 
+                                values=(task[0], requester_display, project_display, task[3], status),
+                                tags=('done' if task[4] else 'not_done',)
+                            )
+                    
+                    # Apply tag styling
+                    tree.tag_configure('done', foreground='dark green')
+                    tree.tag_configure('not_done', foreground='red')
+
+                    # Handle empty tabs
+                    if not tree.get_children():
+                        tree.insert("", tk.END, values=("", "No Tasks Assigned", "", "", ""),
+                                    tags=('no_tasks',))
+                        tree.tag_configure('no_tasks', foreground='gray')
 
     def sort_tree(self, col, reverse):
         """
@@ -701,48 +1202,6 @@ class TaskTracker(tk.Tk):
 
         # Reverse sort next time
         self.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
-
-    def refresh_day_windows(self):
-        """
-        Refreshes all open day schedule windows.
-        """
-        for window, notebook in self.day_windows.items():
-            if window.winfo_exists():
-                for tab in notebook.tabs():
-                    tree = notebook.nametowidget(tab).winfo_children()[0]
-                    for item in tree.get_children():
-                        tree.delete(item)
-
-                    # Fetch only assigned tasks for the specific day
-                    tasks = self.db.get_tasks(
-                        filter_requester=None, 
-                        search_keyword=None, 
-                        filter_status=None, 
-                        only_assigned=True
-                    )
-                    for task in tasks:
-                        task_day = task[4].strip().lower() if task[4] else ""
-                        current_day = notebook.tab(tab, "text").lower()
-                        if task_day == current_day:
-                            status = "Done ✔" if task[3] else "Not Done ❌"
-                            tree.insert(
-                                '', 
-                                tk.END, 
-                                values=(task[0], task[1], task[2], status),
-                                tags=('done' if task[3] else 'not_done',)
-                            )
-                    
-                    # Reapply tag styling
-                    tree.tag_configure('done', foreground='dark green')
-                    tree.tag_configure('not_done', foreground='red')
-
-                # Handle empty tabs
-                for tab in notebook.tabs():
-                    tree = notebook.nametowidget(tab).winfo_children()[0]
-                    if not tree.get_children():
-                        tree.insert("", tk.END, values=("", "No Tasks Assigned", "", ""),
-                                    tags=('no_tasks',))
-                        tree.tag_configure('no_tasks', foreground='gray')
 
     def on_closing(self):
         """
