@@ -790,17 +790,27 @@ class TaskTracker(tk.Tk):
 
         tasks = self.db.get_tasks(requester_id, project_id, search_keyword, filter_status, only_assigned)
 
-        for task in tasks:
+        for index, task in enumerate(tasks):
             status = "Done ✔" if task[4] else "Not Done ❌"
             day_assigned = task[5] if task[5] else ""
             requester_display = task[1] if task[1] else "No Requester"
             project_display = task[2] if task[2] else "No Project"
-            self.tree.insert("", tk.END, values=(task[0], requester_display, project_display, task[3], status, day_assigned),
-                             tags=('done' if task[4] else 'not_done',))
 
-        # Apply tag styling
+            # Apply alternating row styles (simulate border)
+            if index % 2 == 0:
+                tag = 'evenrow'
+            else:
+                tag = 'oddrow'
+
+            self.tree.insert("", tk.END, values=(task[0], requester_display, project_display, task[3], status, day_assigned),
+                            tags=(tag, 'done' if task[4] else 'not_done',))
+
+        # Apply tag styling for rows
         self.tree.tag_configure('done', foreground='dark green')
         self.tree.tag_configure('not_done', foreground='red')
+        self.tree.tag_configure('evenrow', background='#e6e6e6')  # Lighter row background
+        self.tree.tag_configure('oddrow', background='#cfcfcf')  # Darker row background
+
 
     def filter_tasks(self, event=None):
         """
