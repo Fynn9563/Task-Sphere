@@ -398,7 +398,7 @@ class TaskTracker(tk.Tk):
 
         self.requester_filter = ttk.Combobox(search_frame, state="readonly")
         self.requester_filter.grid(row=0, column=3, sticky='w', padx=(0,15))
-        self.requester_filter.bind('<<ComboboxSelected>>', self.refresh_project_filter)
+        self.requester_filter.bind('<<ComboboxSelected>>', self.filter_tasks)
 
         # Project Filter Label and Combobox
         project_filter_label = ttk.Label(search_frame, text="Project:", font=self.customHeadingsFont)
