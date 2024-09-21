@@ -13,7 +13,7 @@ class TaskDatabase:
 
     def setup_database(self):
         """
-        Sets up the database schema and performs data migration.
+        Sets up the database schema and ensures default entries exist.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -29,13 +29,7 @@ class TaskDatabase:
                 )
             ''')
 
-            # Ensure default requester exists
-            default_requester_name = 'Default Requester'
-            cursor.execute("INSERT OR IGNORE INTO requesters (name) VALUES (?)", (default_requester_name,))
-            cursor.execute("SELECT id FROM requesters WHERE name = ?", (default_requester_name,))
-            default_requester_id = cursor.fetchone()[0]
-
-            # Create projects table without requester_id
+            # Create projects table with UNIQUE constraint on project_name
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS projects (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,15 +37,12 @@ class TaskDatabase:
                 )
             ''')
 
-            # Ensure default project exists
+            # Ensure default project exists using INSERT OR IGNORE to prevent duplicates
             default_project_name = 'Default Project'
             cursor.execute("INSERT OR IGNORE INTO projects (project_name) VALUES (?)",
-                           (default_project_name,))
-            cursor.execute("SELECT id FROM projects WHERE project_name = ?",
-                           (default_project_name,))
-            default_project_id = cursor.fetchone()[0]
+                        (default_project_name,))
 
-            # Create tasks table with requester_id and project_id
+            # Create tasks table with foreign keys
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,15 +55,6 @@ class TaskDatabase:
                     FOREIGN KEY(requester_id) REFERENCES requesters(id) ON DELETE SET NULL
                 )
             ''')
-
-            # Check if 'requester_id' column exists in 'tasks' table
-            cursor.execute("PRAGMA table_info(tasks)")
-            columns = [info[1] for info in cursor.fetchall()]
-
-            if 'requester_id' not in columns:
-                cursor.execute("ALTER TABLE tasks ADD COLUMN requester_id INTEGER")
-                # Assign default requester to existing tasks where requester_id is NULL
-                cursor.execute("UPDATE tasks SET requester_id = ? WHERE requester_id IS NULL", (default_requester_id,))
 
             conn.commit()
 
@@ -216,16 +198,17 @@ class TaskDatabase:
     def get_task_by_id(self, task_id):
         """
         Retrieves a task by its ID.
+        Returns a tuple: (id, requester_name, project_name, task_name, status, day_assigned)
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT tasks.id, 
-                       requesters.name as requester_name,
-                       projects.project_name, 
-                       tasks.task_name, 
-                       tasks.status, 
-                       tasks.day_assigned
+                    requesters.name as requester_name,
+                    projects.project_name, 
+                    tasks.task_name, 
+                    tasks.status, 
+                    tasks.day_assigned
                 FROM tasks
                 LEFT JOIN projects ON tasks.project_id = projects.id
                 LEFT JOIN requesters ON tasks.requester_id = requesters.id
@@ -284,7 +267,7 @@ class TaskDatabase:
 
     def has_tasks(self, project_id):
         """
-        Checks if a project has any associated tasks.
+        Checks if any tasks are associated with the given project_id.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -624,12 +607,15 @@ class TaskTracker(tk.Tk):
         """
         project_name = simpledialog.askstring("Add Project", "Enter new project name:")
         if project_name:
+            # Normalize spaces: replace multiple spaces with a single space and trim
+            project_name = ' '.join(project_name.strip().split())
+            
             existing_projects = self.db.get_all_projects()
             project_names = [name for (id, name) in existing_projects]
-            if project_name.strip() in project_names:
+            if project_name in project_names:
                 messagebox.showwarning("Duplicate Project", "This project already exists.")
                 return
-            self.db.add_project(project_name.strip())
+            self.db.add_project(project_name)
             self.refresh_project_dropdown()
             self.refresh_project_filter()  # Ensure project_filter is updated
             self.load_tasks()
@@ -993,8 +979,7 @@ class TaskTracker(tk.Tk):
         If is_batch is False, updates Task Name, Requester, and Project for a single task.
         """
         if is_batch:
-            # For batch editing, new_task_name is None
-            # Only update requester and/or project if new values are provided
+            # Batch editing logic
             update_fields = {}
             
             # Handle Requester Update
@@ -1031,7 +1016,7 @@ class TaskTracker(tk.Tk):
             messagebox.showinfo("Success", "Selected tasks have been updated.")
             window.destroy()
         else:
-            # Single task editing
+            # Single task editing logic
             new_task_name = new_task_name.strip()
             new_requester_name = new_requester_name.strip()
             new_project_name = new_project_name.strip()
@@ -1055,7 +1040,7 @@ class TaskTracker(tk.Tk):
                 project_id = project_dict.get(new_project_name)
 
             # Update the task in the database
-            self.db.update_task(tasks[0][0], task_name=new_task_name, requester_id=requester_id, project_id=project_id)
+            self.db.update_task(tasks[0], task_name=new_task_name, requester_id=requester_id, project_id=project_id)
 
             self.load_tasks()
             self.refresh_day_windows()
