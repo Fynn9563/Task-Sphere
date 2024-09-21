@@ -35,26 +35,23 @@ class TaskDatabase:
             cursor.execute("SELECT id FROM requesters WHERE name = ?", (default_requester_name,))
             default_requester_id = cursor.fetchone()[0]
 
-            # Create projects table with UNIQUE constraint
+            # Create projects table without requester_id
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS projects (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project_name TEXT NOT NULL,
-                    requester_id INTEGER NOT NULL,
-                    UNIQUE(project_name, requester_id),
-                    FOREIGN KEY(requester_id) REFERENCES requesters(id)
+                    project_name TEXT NOT NULL UNIQUE
                 )
             ''')
 
             # Ensure default project exists
             default_project_name = 'Default Project'
-            cursor.execute("INSERT OR IGNORE INTO projects (project_name, requester_id) VALUES (?, ?)",
-                           (default_project_name, default_requester_id))
-            cursor.execute("SELECT id FROM projects WHERE project_name = ? AND requester_id = ?",
-                           (default_project_name, default_requester_id))
+            cursor.execute("INSERT OR IGNORE INTO projects (project_name) VALUES (?)",
+                           (default_project_name,))
+            cursor.execute("SELECT id FROM projects WHERE project_name = ?",
+                           (default_project_name,))
             default_project_id = cursor.fetchone()[0]
 
-            # Create tasks table
+            # Create tasks table with requester_id and project_id
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,12 +60,12 @@ class TaskDatabase:
                     day_assigned TEXT,
                     project_id INTEGER,
                     requester_id INTEGER,
-                    FOREIGN KEY(project_id) REFERENCES projects(id),
-                    FOREIGN KEY(requester_id) REFERENCES requesters(id)
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
+                    FOREIGN KEY(requester_id) REFERENCES requesters(id) ON DELETE SET NULL
                 )
             ''')
 
-            # Check if 'project_id' column exists in 'tasks' table
+            # Check if 'requester_id' column exists in 'tasks' table
             cursor.execute("PRAGMA table_info(tasks)")
             columns = [info[1] for info in cursor.fetchall()]
 
@@ -98,29 +95,26 @@ class TaskDatabase:
             cursor.execute("SELECT id, name FROM requesters ORDER BY name")
             return cursor.fetchall()
 
-    def add_project(self, project_name, requester_id):
+    def add_project(self, project_name):
         """
-        Adds a new project under a requester.
+        Adds a new project.
         """
         project_name = project_name.strip()  # Strip whitespace
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO projects (project_name, requester_id) VALUES (?, ?)",
-                (project_name, requester_id)
+                "INSERT INTO projects (project_name) VALUES (?)",
+                (project_name,)
             )
             conn.commit()
 
-    def get_projects_by_requester(self, requester_id):
+    def get_all_projects(self):
         """
-        Retrieves all projects for a given requester.
+        Retrieves all projects.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, project_name FROM projects WHERE requester_id = ? ORDER BY project_name",
-                (requester_id,)
-            )
+            cursor.execute("SELECT id, project_name FROM projects ORDER BY project_name")
             return cursor.fetchall()
 
     def add_task(self, task_name, requester_id=None, project_id=None):
@@ -141,22 +135,21 @@ class TaskDatabase:
         """
         query = '''
             SELECT tasks.id, 
-                   COALESCE(task_requesters.name, requesters.name) as requester_name,
+                   requesters.name as requester_name,
                    projects.project_name, 
                    tasks.task_name, 
                    tasks.status, 
                    tasks.day_assigned
             FROM tasks
             LEFT JOIN projects ON tasks.project_id = projects.id
-            LEFT JOIN requesters ON projects.requester_id = requesters.id
-            LEFT JOIN requesters AS task_requesters ON tasks.requester_id = task_requesters.id
+            LEFT JOIN requesters ON tasks.requester_id = requesters.id
         '''
         conditions = []
         parameters = []
 
         if requester_id and requester_id != "All":
-            conditions.append("(requesters.id = ? OR task_requesters.id = ?)")
-            parameters.extend([requester_id, requester_id])
+            conditions.append("requesters.id = ?")
+            parameters.append(requester_id)
 
         if project_id and project_id != "All":
             conditions.append("projects.id = ?")
@@ -176,7 +169,7 @@ class TaskDatabase:
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += " ORDER BY requester_name, projects.project_name, tasks.task_name"
+        query += " ORDER BY requesters.name, projects.project_name, tasks.task_name"
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -228,15 +221,14 @@ class TaskDatabase:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT tasks.id, 
-                       COALESCE(task_requesters.name, requesters.name) as requester_name,
+                       requesters.name as requester_name,
                        projects.project_name, 
                        tasks.task_name, 
                        tasks.status, 
                        tasks.day_assigned
                 FROM tasks
                 LEFT JOIN projects ON tasks.project_id = projects.id
-                LEFT JOIN requesters ON projects.requester_id = requesters.id
-                LEFT JOIN requesters AS task_requesters ON tasks.requester_id = task_requesters.id
+                LEFT JOIN requesters ON tasks.requester_id = requesters.id
                 WHERE tasks.id = ?
             ''', (task_id,))
             return cursor.fetchone()
@@ -281,13 +273,23 @@ class TaskDatabase:
             cursor.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
             conn.commit()
 
-    def has_projects(self, requester_id):
+    def has_projects(self):
         """
-        Checks if a requester has any associated projects.
+        Checks if there are any projects.
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM projects WHERE requester_id = ?", (requester_id,))
+            cursor.execute("SELECT COUNT(*) FROM projects")
+            count = cursor.fetchone()[0]
+            return count > 0
+
+    def has_requesters(self):
+        """
+        Checks if there are any requesters.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM requesters")
             count = cursor.fetchone()[0]
             return count > 0
 
@@ -320,6 +322,8 @@ class TaskTracker(tk.Tk):
 
         self.create_widgets()
         self.refresh_requester_dropdown()
+        self.refresh_project_dropdown()
+        self.refresh_project_filter()
         self.refresh_requester_filter()
         self.load_tasks()
 
@@ -340,7 +344,7 @@ class TaskTracker(tk.Tk):
 
         self.requester_entry = ttk.Combobox(top_frame, state="readonly")
         self.requester_entry.grid(row=0, column=1, sticky='w', padx=(0,5))
-        self.requester_entry.bind('<<ComboboxSelected>>', self.refresh_project_dropdown)
+        self.requester_entry.bind('<<ComboboxSelected>>', self.filter_tasks)
 
         # Add Requester Button
         add_requester_button = ttk.Button(top_frame, text="Add Requester", command=self.add_requester)
@@ -380,7 +384,7 @@ class TaskTracker(tk.Tk):
         search_frame = ttk.Frame(self)
         search_frame.pack(side='top', fill='x', padx=10, pady=5)
 
-        # Search Entry
+        # Search Label and Entry
         search_label = ttk.Label(search_frame, text="Search:", font=self.customHeadingsFont)
         search_label.grid(row=0, column=0, sticky='w', padx=(0,5))
 
@@ -388,7 +392,7 @@ class TaskTracker(tk.Tk):
         self.search_entry.grid(row=0, column=1, sticky='w', padx=(0,15))
         self.search_entry.bind('<KeyRelease>', self.filter_tasks)
 
-        # Requester Filter
+        # Requester Filter Label and Combobox
         requester_filter_label = ttk.Label(search_frame, text="Requester:", font=self.customHeadingsFont)
         requester_filter_label.grid(row=0, column=2, sticky='w', padx=(0,5))
 
@@ -396,7 +400,7 @@ class TaskTracker(tk.Tk):
         self.requester_filter.grid(row=0, column=3, sticky='w', padx=(0,15))
         self.requester_filter.bind('<<ComboboxSelected>>', self.refresh_project_filter)
 
-        # Project Filter
+        # Project Filter Label and Combobox
         project_filter_label = ttk.Label(search_frame, text="Project:", font=self.customHeadingsFont)
         project_filter_label.grid(row=0, column=4, sticky='w', padx=(0,5))
 
@@ -404,7 +408,7 @@ class TaskTracker(tk.Tk):
         self.project_filter.grid(row=0, column=5, sticky='w', padx=(0,15))
         self.project_filter.bind('<<ComboboxSelected>>', self.filter_tasks)
 
-        # Status Filter
+        # Status Filter Label and Combobox
         status_filter_label = ttk.Label(search_frame, text="Status:", font=self.customHeadingsFont)
         status_filter_label.grid(row=0, column=6, sticky='w', padx=(0,5))
 
@@ -543,10 +547,29 @@ class TaskTracker(tk.Tk):
         self.requester_entry['values'] = [name for (id, name) in requesters]
         if requesters:
             self.requester_entry.set(requesters[0][1])
-            self.refresh_project_dropdown()
         else:
-            self.requester_entry['values'] = []
             self.requester_entry.set("")
+
+    def refresh_project_dropdown(self):
+        """
+        Refreshes the project dropdown with all projects.
+        """
+        projects = self.db.get_all_projects()
+        self.project_entry['values'] = [name for (id, name) in projects]
+        if projects:
+            self.project_entry.set(projects[0][1])
+        else:
+            self.project_entry.set("")
+
+    def refresh_project_filter(self, event=None):
+        """
+        Refreshes the project filter dropdown to display all projects.
+        """
+        projects = self.db.get_all_projects()
+        project_names = [project[1].strip() for project in projects]  # Strip project names
+        self.project_filter['values'] = ["All"] + project_names
+        self.project_filter.set("All")
+        self.filter_tasks()
 
     def refresh_requester_filter(self):
         """
@@ -555,91 +578,36 @@ class TaskTracker(tk.Tk):
         requesters = [("All", "All")] + self.db.get_all_requesters()
         self.requester_filter['values'] = [name for (id, name) in requesters]
         self.requester_filter.set("All")
-        self.refresh_project_filter()
-
-    def refresh_project_dropdown(self, event=None):
-        """
-        Refreshes the project dropdown based on selected requester.
-        """
-        requester_name = self.requester_entry.get().strip()  # Strip whitespace
-        if requester_name:
-            requesters = self.db.get_all_requesters()
-            requester_dict = {name.strip(): id for (id, name) in requesters}
-            requester_id = requester_dict.get(requester_name)
-            projects = self.db.get_projects_by_requester(requester_id)
-            self.project_entry['values'] = [name.strip() for (id, name) in projects]
-            if projects:
-                self.project_entry.set(projects[0][1].strip())
-            else:
-                self.project_entry['values'] = []
-                self.project_entry.set("")
-        else:
-            self.project_entry['values'] = []
-            self.project_entry.set("")
-
-    def refresh_project_filter(self, event=None):
-        """
-        Refreshes the project filter dropdown based on selected requester filter.
-        """
-        requester_name = self.requester_filter.get().strip()  # Strip whitespace
-        if requester_name != "All":
-            requesters = self.db.get_all_requesters()
-            requester_dict = {name.strip(): id for (id, name) in requesters}  # Strip keys
-            requester_id = requester_dict.get(requester_name)
-            if requester_id:
-                projects = self.db.get_projects_by_requester(requester_id)
-                project_names = [project[1].strip() for project in projects]  # Strip project names
-                self.project_filter['values'] = ["All"] + project_names
-                self.project_filter.set("All")
-            else:
-                self.project_filter['values'] = ["All"]
-                self.project_filter.set("All")
-        else:
-            self.project_filter['values'] = ["All"]
-            self.project_filter.set("All")
-        self.filter_tasks()
 
     def add_project(self):
         """
-        Opens a dialog to add a new project under the selected requester.
+        Opens a dialog to add a new project.
         """
-        requester_name = self.requester_entry.get()
-        if not requester_name:
-            messagebox.showwarning("Input Error", "Please select a requester first.")
-            return
-
         project_name = simpledialog.askstring("Add Project", "Enter new project name:")
         if project_name:
-            requesters = self.db.get_all_requesters()
-            requester_dict = {name.strip(): id for (id, name) in requesters}
-            requester_id = requester_dict.get(requester_name.strip())
-            self.db.add_project(project_name.strip(), requester_id)
+            existing_projects = self.db.get_all_projects()
+            project_names = [name for (id, name) in existing_projects]
+            if project_name.strip() in project_names:
+                messagebox.showwarning("Duplicate Project", "This project already exists.")
+                return
+            self.db.add_project(project_name.strip())
             self.refresh_project_dropdown()
             self.refresh_project_filter()
+            self.load_tasks()
             messagebox.showinfo("Success", "Project added successfully.")
 
     def delete_project(self):
         """
         Deletes the selected project after confirmation.
         """
-        requester_name = self.requester_entry.get().strip()
         project_name = self.project_entry.get().strip()
 
         if not project_name:
             messagebox.showwarning("Selection Error", "Please select a project to delete.")
             return
 
-        # Get requester_id
-        requesters = self.db.get_all_requesters()
-        requester_dict = {name.strip(): id for (id, name) in requesters}
-        requester_id = requester_dict.get(requester_name)
-
-        if not requester_id:
-            messagebox.showerror("Error", "Requester not found.")
-            return
-
         # Get project_id
-        projects = self.db.get_projects_by_requester(requester_id)
+        projects = self.db.get_all_projects()
         project_dict = {name.strip(): id for (id, name) in projects}
         project_id = project_dict.get(project_name)
 
@@ -688,13 +656,17 @@ class TaskTracker(tk.Tk):
             messagebox.showerror("Error", "Requester not found.")
             return
 
-        # Check if the requester has associated projects
-        if self.db.has_projects(requester_id):
-            messagebox.showwarning(
-                "Cannot Delete",
-                "This requester has associated projects. Please delete or reassign them before deleting the requester."
-            )
-            return
+        # Check if the requester has associated tasks
+        with sqlite3.connect(self.db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM tasks WHERE requester_id = ?", (requester_id,))
+            count = cursor.fetchone()[0]
+            if count > 0:
+                messagebox.showwarning(
+                    "Cannot Delete",
+                    "This requester has associated tasks. Please delete or reassign them before deleting the requester."
+                )
+                return
 
         # Confirm deletion
         confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the requester '{requester_name}'?")
@@ -716,9 +688,15 @@ class TaskTracker(tk.Tk):
         """
         requester_name = simpledialog.askstring("Add Requester", "Enter new requester name:")
         if requester_name:
+            existing_requesters = self.db.get_all_requesters()
+            requester_names = [name for (id, name) in existing_requesters]
+            if requester_name.strip() in requester_names:
+                messagebox.showwarning("Duplicate Requester", "This requester already exists.")
+                return
             self.db.add_requester(requester_name.strip())
             self.refresh_requester_dropdown()
             self.refresh_requester_filter()
+            self.load_tasks()
             messagebox.showinfo("Success", "Requester added successfully.")
 
     def add_task(self):
@@ -735,15 +713,15 @@ class TaskTracker(tk.Tk):
 
         # Get requester_id
         requester_id = None
-        if requester_name:
+        if requester_name and requester_name != "All":
             requesters = self.db.get_all_requesters()
             requester_dict = {name.strip(): id for (id, name) in requesters}
             requester_id = requester_dict.get(requester_name)
 
         # Get project_id if project is selected
         project_id = None
-        if project_name and requester_id:
-            projects = self.db.get_projects_by_requester(requester_id)
+        if project_name and project_name != "All":
+            projects = self.db.get_all_projects()
             project_dict = {name.strip(): id for (id, name) in projects}
             project_id = project_dict.get(project_name)
 
@@ -780,8 +758,8 @@ class TaskTracker(tk.Tk):
 
         # Get project_id
         project_id = None
-        if project_name != "All" and requester_id:
-            projects = self.db.get_projects_by_requester(requester_id)
+        if project_name != "All":
+            projects = self.db.get_all_projects()
             project_dict = {name.strip(): id for (id, name) in projects}
             project_id = project_dict.get(project_name.strip())
 
@@ -926,7 +904,7 @@ class TaskTracker(tk.Tk):
         project_combobox = ttk.Combobox(main_frame, state="readonly")
         project_combobox.grid(row=2, column=1, sticky='we', pady=(0,10))
 
-        # Initialize project_combobox with projects for current requester
+        # Initialize project_combobox with all projects
         self.update_projects_in_edit_dialog(project_combobox, requester_combobox, current_project_name=task[2])
 
         # Save Button
@@ -946,33 +924,22 @@ class TaskTracker(tk.Tk):
         """
         Updates the project combobox in the edit dialog based on the selected requester.
         """
-        requester_name = requester_combobox.get().strip()  # Strip whitespace
-        if requester_name:
-            requesters = self.db.get_all_requesters()
-            requester_dict = {name.strip(): id for (id, name) in requesters}  # Strip keys
-            requester_id = requester_dict.get(requester_name)
-            if requester_id:
-                projects = self.db.get_projects_by_requester(requester_id)
-                project_names = [project[1].strip() for project in projects]  # Strip project names
-                project_combobox['values'] = project_names
-                if current_project_name and current_project_name.strip() in project_names:
-                    project_combobox.set(current_project_name.strip())
-                else:
-                    project_combobox.set('')
-            else:
-                project_combobox['values'] = []
-                project_combobox.set('')
+        # Since projects are independent of requesters, list all projects
+        projects = self.db.get_all_projects()
+        project_names = [name.strip() for (id, name) in projects]
+        project_combobox['values'] = project_names
+        if current_project_name and current_project_name.strip() in project_names:
+            project_combobox.set(current_project_name.strip())
         else:
-            project_combobox['values'] = []
             project_combobox.set('')
 
     def save_task_changes(self, task_id, new_task_name, new_requester_name, new_project_name, window):
         """
         Saves the changes made to a task.
         """
-        new_task_name = new_task_name.strip()  # Strip whitespace
-        new_requester_name = new_requester_name.strip()  # Strip whitespace
-        new_project_name = new_project_name.strip()  # Strip whitespace
+        new_task_name = new_task_name.strip()
+        new_requester_name = new_requester_name.strip()
+        new_project_name = new_project_name.strip()
 
         if not new_task_name:
             messagebox.showwarning("Input Error", "Task Name cannot be empty.")
@@ -991,15 +958,11 @@ class TaskTracker(tk.Tk):
         # Get project_id
         project_id = None
         if new_project_name:
-            if requester_id:
-                projects = self.db.get_projects_by_requester(requester_id)
-                project_dict = {name.strip(): id for (id, name) in projects}
-                project_id = project_dict.get(new_project_name)
-                if not project_id:
-                    messagebox.showerror("Error", "Selected project does not exist.")
-                    return
-            else:
-                messagebox.showerror("Error", "Please select a requester for the project.")
+            projects = self.db.get_all_projects()
+            project_dict = {name.strip(): id for (id, name) in projects}
+            project_id = project_dict.get(new_project_name)
+            if not project_id:
+                messagebox.showerror("Error", "Selected project does not exist.")
                 return
 
         # Update the task in the database
