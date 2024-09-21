@@ -233,17 +233,54 @@ class TaskDatabase:
             ''', (task_id,))
             return cursor.fetchone()
 
-    def update_task(self, task_id, new_task_name, requester_id, project_id):
+    def update_task(self, task_id, task_name=None, requester_id=None, project_id=None):
         """
-        Updates the task name, requester, and project of a task.
+        Updates the task's name, requester, and/or project.
+        Only updates the fields provided (non-None).
         """
+        fields = []
+        parameters = []
+
+        if task_name is not None:
+            fields.append("task_name = ?")
+            parameters.append(task_name)
+
+        if requester_id is not None:
+            fields.append("requester_id = ?")
+            parameters.append(requester_id)
+
+        if project_id is not None:
+            fields.append("project_id = ?")
+            parameters.append(project_id)
+
+        # If no fields to update, do nothing
+        if not fields:
+            return
+
+        # Construct the SQL query
+        query = f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?"
+        parameters.append(task_id)
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE tasks SET task_name = ?, requester_id = ?, project_id = ? WHERE id = ?",
-                (new_task_name, requester_id, project_id, task_id)
-            )
+            cursor.execute(query, tuple(parameters))
             conn.commit()
+
+    def get_requester_id_by_name(self, requester_name):
+        """
+        Returns the requester_id given a requester_name.
+        """
+        requesters = self.db.get_all_requesters()
+        requester_dict = {name.strip(): id for (id, name) in requesters}
+        return requester_dict.get(requester_name)
+
+    def get_project_id_by_name(self, project_name):
+        """
+        Returns the project_id given a project_name.
+        """
+        projects = self.db.get_all_projects()
+        project_dict = {name.strip(): id for (id, name) in projects}
+        return project_dict.get(project_name)
 
     def has_tasks(self, project_id):
         """
@@ -839,30 +876,35 @@ class TaskTracker(tk.Tk):
 
     def edit_task(self):
         """
-        Opens a dialog to edit the selected task.
+        Opens a dialog to edit the selected task(s).
+        Supports single and multiple selections.
         """
         selected_items = self.tree.selection()
         if not selected_items:
-            messagebox.showwarning("Selection Error", "Please select a task to edit.")
-            return
-        elif len(selected_items) > 1:
-            messagebox.showwarning("Selection Error", "Please select only one task to edit.")
+            messagebox.showwarning("Selection Error", "Please select at least one task to edit.")
             return
 
-        task_id = self.tree.item(selected_items[0])['values'][0]
-        task = self.db.get_task_by_id(task_id)
-        if task:
-            self.open_edit_task_dialog(task)
+        if len(selected_items) == 1:
+            task_id = self.tree.item(selected_items[0])['values'][0]
+            task = self.db.get_task_by_id(task_id)
+            if task:
+                self.open_edit_task_dialog(task, is_batch=False)
+            else:
+                messagebox.showerror("Error", "Selected task does not exist.")
         else:
-            messagebox.showerror("Error", "Selected task does not exist.")
+            # Multiple tasks selected
+            tasks = [self.db.get_task_by_id(self.tree.item(item)['values'][0]) for item in selected_items]
+            self.open_edit_task_dialog(tasks, is_batch=True)
 
-    def open_edit_task_dialog(self, task):
+    def open_edit_task_dialog(self, tasks, is_batch=False):
         """
-        Opens a new window to edit the selected task.
+        Opens a new window to edit the selected task(s).
+        If is_batch is True, allows bulk editing of Requester and Project with "No Change" options.
+        If is_batch is False, allows editing of Task Name, Requester, and Project.
         """
         edit_window = tk.Toplevel(self)
-        edit_window.title("Edit Task")
-        edit_window.geometry("500x400")
+        edit_window.title("Edit Task" if not is_batch else "Batch Edit Tasks")
+        edit_window.geometry("500x300" if not is_batch else "400x250")
         edit_window.resizable(False, False)
         edit_window.grab_set()
 
@@ -877,50 +919,59 @@ class TaskTracker(tk.Tk):
         # Configure grid
         main_frame.columnconfigure(1, weight=1)
 
-        # Task Name Label and Entry
-        task_name_label = ttk.Label(main_frame, text="Task Name:", font=self.customHeadingsFont)
-        task_name_label.grid(row=0, column=0, sticky='e', padx=(0,10), pady=(0,10))
+        row_counter = 0
 
-        task_name_entry = ttk.Entry(main_frame, font=self.customFont)
-        task_name_entry.insert(0, task[3])
-        task_name_entry.grid(row=0, column=1, sticky='we', pady=(0,10))
+        if not is_batch:
+            # Task Name Label and Entry (only for single edit)
+            task_name_label = ttk.Label(main_frame, text="Task Name:", font=self.customHeadingsFont)
+            task_name_label.grid(row=row_counter, column=0, sticky='e', padx=(0,10), pady=(0,10))
+
+            task_name_entry = ttk.Entry(main_frame, font=self.customFont)
+            task_name_entry.insert(0, tasks[3])  # tasks is a single task tuple
+            task_name_entry.grid(row=row_counter, column=1, sticky='we', pady=(0,10))
+            row_counter += 1
 
         # Requester Label and Combobox
         requester_label = ttk.Label(main_frame, text="Requester:", font=self.customHeadingsFont)
-        requester_label.grid(row=1, column=0, sticky='e', padx=(0,10), pady=(0,10))
+        requester_label.grid(row=row_counter, column=0, sticky='e', padx=(0,10), pady=(0,10))
 
         requester_combobox = ttk.Combobox(main_frame, state="readonly")
         requesters = self.db.get_all_requesters()
-        requester_combobox['values'] = [name.strip() for (id, name) in requesters]
-        if task[1]:
-            requester_combobox.set(task[1].strip())  # Set current requester
+        requester_combobox['values'] = ["-- No Change --"] + [name.strip() for (id, name) in requesters]
+        if not is_batch and tasks[1]:
+            requester_combobox.set(tasks[1].strip())  # Set current requester for single edit
         else:
-            requester_combobox.set('')  # No requester
-        requester_combobox.grid(row=1, column=1, sticky='we', pady=(0,10))
-        requester_combobox.bind('<<ComboboxSelected>>', lambda event: self.update_projects_in_edit_dialog(project_combobox, requester_combobox))
+            requester_combobox.set("-- No Change --")  # Default for batch edit
+        requester_combobox.grid(row=row_counter, column=1, sticky='we', pady=(0,10))
+        row_counter += 1
 
         # Project Label and Combobox
         project_label = ttk.Label(main_frame, text="Project:", font=self.customHeadingsFont)
-        project_label.grid(row=2, column=0, sticky='e', padx=(0,10), pady=(0,10))
+        project_label.grid(row=row_counter, column=0, sticky='e', padx=(0,10), pady=(0,10))
 
         project_combobox = ttk.Combobox(main_frame, state="readonly")
-        project_combobox.grid(row=2, column=1, sticky='we', pady=(0,10))
-
-        # Initialize project_combobox with all projects
-        self.update_projects_in_edit_dialog(project_combobox, requester_combobox, current_project_name=task[2])
+        projects = self.db.get_all_projects()
+        project_combobox['values'] = ["-- No Change --"] + [name.strip() for (id, name) in projects]
+        if not is_batch and tasks[2]:
+            project_combobox.set(tasks[2].strip())  # Set current project for single edit
+        else:
+            project_combobox.set("-- No Change --")  # Default for batch edit
+        project_combobox.grid(row=row_counter, column=1, sticky='we', pady=(0,10))
+        row_counter += 1
 
         # Save Button
         save_button = ttk.Button(
             main_frame, text="Save Changes",
             command=lambda: self.save_task_changes(
-                task_id=task[0],
-                new_task_name=task_name_entry.get().strip(),
+                tasks=tasks,
+                new_task_name=task_name_entry.get().strip() if not is_batch else None,
                 new_requester_name=requester_combobox.get().strip(),
                 new_project_name=project_combobox.get().strip(),
-                window=edit_window
+                window=edit_window,
+                is_batch=is_batch
             )
         )
-        save_button.grid(row=3, column=0, columnspan=2, pady=20)
+        save_button.grid(row=row_counter, column=0, columnspan=2, pady=20)
 
     def update_projects_in_edit_dialog(self, project_combobox, requester_combobox, current_project_name=None):
         """
@@ -935,45 +986,81 @@ class TaskTracker(tk.Tk):
         else:
             project_combobox.set('')
 
-    def save_task_changes(self, task_id, new_task_name, new_requester_name, new_project_name, window):
+    def save_task_changes(self, tasks, new_task_name, new_requester_name, new_project_name, window, is_batch=False):
         """
-        Saves the changes made to a task.
+        Saves the changes made to a task or multiple tasks.
+        If is_batch is True, updates Requester and/or Project for all selected tasks based on user input.
+        If is_batch is False, updates Task Name, Requester, and Project for a single task.
         """
-        new_task_name = new_task_name.strip()
-        new_requester_name = new_requester_name.strip()
-        new_project_name = new_project_name.strip()
+        if is_batch:
+            # For batch editing, new_task_name is None
+            # Only update requester and/or project if new values are provided
+            update_fields = {}
+            
+            # Handle Requester Update
+            if new_requester_name and new_requester_name != "-- No Change --":
+                requesters = self.db.get_all_requesters()
+                requester_dict = {name.strip(): id for (id, name) in requesters}
+                requester_id = requester_dict.get(new_requester_name)
+                if not requester_id:
+                    messagebox.showerror("Error", "Selected requester does not exist.")
+                    return
+                update_fields['requester_id'] = requester_id
 
-        if not new_task_name:
-            messagebox.showwarning("Input Error", "Task Name cannot be empty.")
-            return
+            # Handle Project Update
+            if new_project_name and new_project_name != "-- No Change --":
+                projects = self.db.get_all_projects()
+                project_dict = {name.strip(): id for (id, name) in projects}
+                project_id = project_dict.get(new_project_name)
+                if not project_id:
+                    messagebox.showerror("Error", "Selected project does not exist.")
+                    return
+                update_fields['project_id'] = project_id
 
-        # Get requester_id
-        requester_id = None
-        if new_requester_name:
-            requesters = self.db.get_all_requesters()
-            requester_dict = {name.strip(): id for (id, name) in requesters}
-            requester_id = requester_dict.get(new_requester_name)
-            if not requester_id:
-                messagebox.showerror("Error", "Selected requester does not exist.")
+            if not update_fields:
+                messagebox.showwarning("Input Error", "Please select at least one field to update.")
                 return
 
-        # Get project_id
-        project_id = None
-        if new_project_name:
-            projects = self.db.get_all_projects()
-            project_dict = {name.strip(): id for (id, name) in projects}
-            project_id = project_dict.get(new_project_name)
-            if not project_id:
-                messagebox.showerror("Error", "Selected project does not exist.")
+            # Update each selected task
+            for task in tasks:
+                task_id = task[0]
+                self.db.update_task(task_id, **update_fields)
+
+            self.load_tasks()
+            self.refresh_day_windows()
+            messagebox.showinfo("Success", "Selected tasks have been updated.")
+            window.destroy()
+        else:
+            # Single task editing
+            new_task_name = new_task_name.strip()
+            new_requester_name = new_requester_name.strip()
+            new_project_name = new_project_name.strip()
+
+            if not new_task_name:
+                messagebox.showwarning("Input Error", "Task Name cannot be empty.")
                 return
 
-        # Update the task in the database
-        self.db.update_task(task_id, new_task_name, requester_id, project_id)
+            # Get requester_id
+            requester_id = None
+            if new_requester_name:
+                requesters = self.db.get_all_requesters()
+                requester_dict = {name.strip(): id for (id, name) in requesters}
+                requester_id = requester_dict.get(new_requester_name)
 
-        self.load_tasks()
-        self.refresh_day_windows()
-        messagebox.showinfo("Success", "Task has been updated.")
-        window.destroy()
+            # Get project_id
+            project_id = None
+            if new_project_name:
+                projects = self.db.get_all_projects()
+                project_dict = {name.strip(): id for (id, name) in projects}
+                project_id = project_dict.get(new_project_name)
+
+            # Update the task in the database
+            self.db.update_task(tasks[0][0], task_name=new_task_name, requester_id=requester_id, project_id=project_id)
+
+            self.load_tasks()
+            self.refresh_day_windows()
+            messagebox.showinfo("Success", "Task has been updated.")
+            window.destroy()
 
     def assign_day_to_task(self):
         """
