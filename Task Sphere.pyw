@@ -564,12 +564,14 @@ class TaskTracker(tk.Tk):
     def refresh_project_filter(self, event=None):
         """
         Refreshes the project filter dropdown to display all projects.
+        This method should be called only when projects are added or deleted.
         """
         projects = self.db.get_all_projects()
         project_names = [project[1].strip() for project in projects]  # Strip project names
         self.project_filter['values'] = ["All"] + project_names
         self.project_filter.set("All")
         self.filter_tasks()
+
 
     def refresh_requester_filter(self):
         """
@@ -592,7 +594,7 @@ class TaskTracker(tk.Tk):
                 return
             self.db.add_project(project_name.strip())
             self.refresh_project_dropdown()
-            self.refresh_project_filter()
+            self.refresh_project_filter()  # Ensure project_filter is updated
             self.load_tasks()
             messagebox.showinfo("Success", "Project added successfully.")
 
