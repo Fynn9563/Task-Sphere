@@ -1,7 +1,5 @@
 # Task Sphere
 
-# Task Sphere
-
 Task Sphere helps you organize your tasks and collaborate in real time. Create lists, assign tasks, and stay informed with instant notifications.
 
 ## What You Can Do
