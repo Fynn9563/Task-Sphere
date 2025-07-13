@@ -1,1 +1,58 @@
-*.db
+# Dependency directories
+
+node\_modules/
+\*\*/node\_modules/
+
+# Environment variables
+
+.env
+.env.local
+.env.development
+.env.development.local
+.env.production
+.env.production.local
+.env.test
+.env.test.local
+
+# Vite cache
+
+node\_modules/.vite/
+
+# Build outputs
+
+dist/
+build/
+out/
+\*.tsbuildinfo
+
+# Logs
+
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log\*
+pnpm-debug.log\*
+
+# Vercel
+
+.vercel/
+.vercelignore
+
+# Netlify
+
+.netlify/
+
+# Backup folder
+
+backup/
+
+# OS and Editor files
+
+.DS\_Store
+Thumbs.db
+.vscode/
+.idea/
+\*.suo
+*.ntvs*
+\*.njsproj
+\*.sln
