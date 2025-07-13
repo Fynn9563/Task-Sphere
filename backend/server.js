@@ -67,6 +67,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'Task Sphere API is running!' });
 });
 
+// Health check route
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // JWT middleware with refresh token support
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
