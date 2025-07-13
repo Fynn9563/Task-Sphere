@@ -19,6 +19,9 @@ const io = new Server(server, {
   }
 });
 
+// Trust Proxy
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
