@@ -1022,6 +1022,88 @@ app.post('/api/task-lists/:id/requesters', authenticateToken, async (req, res) =
   }
 });
 
+// Delete project route
+app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('Deleting project:', id, 'by user:', req.user.userId);
+    
+    // First, check if the project exists and get task list info
+    const projectCheck = await pool.query(
+      'SELECT p.*, tl.owner_id FROM projects p JOIN task_lists tl ON p.task_list_id = tl.id WHERE p.id = $1',
+      [id]
+    );
+    
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const project = projectCheck.rows[0];
+    
+    // Check if user has permission (owner or member of task list)
+    const memberCheck = await pool.query(
+      'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
+      [project.task_list_id, req.user.userId]
+    );
+    
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Delete the project (tasks will be set to NULL due to ON DELETE SET NULL)
+    await pool.query('DELETE FROM projects WHERE id = $1', [id]);
+    
+    console.log('Project deleted successfully:', id);
+    
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    console.error('Delete project error:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
+// Delete requester route
+app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('Deleting requester:', id, 'by user:', req.user.userId);
+    
+    // First, check if the requester exists and get task list info
+    const requesterCheck = await pool.query(
+      'SELECT r.*, tl.owner_id FROM requesters r JOIN task_lists tl ON r.task_list_id = tl.id WHERE r.id = $1',
+      [id]
+    );
+    
+    if (requesterCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Requester not found' });
+    }
+    
+    const requester = requesterCheck.rows[0];
+    
+    // Check if user has permission (owner or member of task list)
+    const memberCheck = await pool.query(
+      'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
+      [requester.task_list_id, req.user.userId]
+    );
+    
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Delete the requester (tasks will be set to NULL due to ON DELETE SET NULL)
+    await pool.query('DELETE FROM requesters WHERE id = $1', [id]);
+    
+    console.log('Requester deleted successfully:', id);
+    
+    res.json({ message: 'Requester deleted successfully' });
+  } catch (error) {
+    console.error('Delete requester error:', error);
+    res.status(500).json({ error: 'Failed to delete requester' });
+  }
+});
+
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
