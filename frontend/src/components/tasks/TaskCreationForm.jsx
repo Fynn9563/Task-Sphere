@@ -441,6 +441,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
               type="number"
               step="0.5"
               min="0"
+              max="999"
               value={newTask.estimated_hours}
               onChange={(e) => setNewTask({...newTask, estimated_hours: e.target.value})}
               placeholder="e.g., 2.5"

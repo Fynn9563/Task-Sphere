@@ -745,6 +745,14 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
       }
     }
 
+    // Validate estimated hours
+    if (estimatedHours !== null && estimatedHours !== undefined && estimatedHours !== "") {
+      const hours = parseFloat(estimatedHours);
+      if (isNaN(hours) || hours < 0 || hours > 999) {
+        return res.status(400).json({ error: 'Estimated hours must be between 0 and 999' });
+      }
+    }
+
     // Sanitize inputs
     const sanitizedName = sanitizeInput(name);
     const sanitizedDescription = description ? sanitizeInput(description) : null;

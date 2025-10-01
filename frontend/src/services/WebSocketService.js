@@ -11,7 +11,7 @@ export class WebSocketService {
   connect() {
     if (typeof window.io !== 'undefined') {
       this.socket = window.io(API_BASE_URL);
-      
+
       this.socket.on('connect', () => {
         console.log('Connected to server');
       });
@@ -20,8 +20,10 @@ export class WebSocketService {
         console.log('Disconnected from server');
       });
 
-      this.listeners.forEach((callback, event) => {
-        this.socket.on(event, callback);
+      this.listeners.forEach((callbacks, event) => {
+        callbacks.forEach(callback => {
+          this.socket.on(event, callback);
+        });
       });
     }
   }
@@ -55,15 +57,29 @@ export class WebSocketService {
   }
 
   on(event, callback) {
-    this.listeners.set(event, callback);
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event).push(callback);
     if (this.socket) {
       this.socket.on(event, callback);
     }
   }
 
-  off(event) {
-    this.listeners.delete(event);
-    if (this.socket) {
+  off(event, callback) {
+    if (this.listeners.has(event)) {
+      const callbacks = this.listeners.get(event);
+      const index = callbacks.indexOf(callback);
+      if (index > -1) {
+        callbacks.splice(index, 1);
+      }
+      if (callbacks.length === 0) {
+        this.listeners.delete(event);
+      }
+    }
+    if (this.socket && callback) {
+      this.socket.off(event, callback);
+    } else if (this.socket) {
       this.socket.off(event);
     }
   }

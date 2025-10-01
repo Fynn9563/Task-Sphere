@@ -33,27 +33,40 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
 
   useEffect(() => {
     loadData();
-    
+
     // Connect to WebSocket and join task list room
     ws.connect();
     ws.joinTaskList(taskList.id);
-    
+
     // Set up real-time event listeners
-    ws.on('taskCreated', (task) => {
-      setTasks(prev => [task, ...prev]);
-    });
-    
-    ws.on('taskUpdated', (updatedTask) => {
-      setTasks(prev => prev.map(task => 
+    const handleTaskCreated = (task) => {
+      setTasks(prev => {
+        // Prevent duplicates - check if task already exists
+        if (prev.some(t => t.id === task.id)) {
+          return prev;
+        }
+        return [task, ...prev];
+      });
+    };
+
+    const handleTaskUpdated = (updatedTask) => {
+      setTasks(prev => prev.map(task =>
         task.id === updatedTask.id ? updatedTask : task
       ));
-    });
-    
-    ws.on('taskDeleted', (deletedTask) => {
+    };
+
+    const handleTaskDeleted = (deletedTask) => {
       setTasks(prev => prev.filter(task => task.id !== deletedTask.id));
-    });
+    };
+
+    ws.on('taskCreated', handleTaskCreated);
+    ws.on('taskUpdated', handleTaskUpdated);
+    ws.on('taskDeleted', handleTaskDeleted);
 
     return () => {
+      ws.off('taskCreated', handleTaskCreated);
+      ws.off('taskUpdated', handleTaskUpdated);
+      ws.off('taskDeleted', handleTaskDeleted);
       ws.leaveTaskList(taskList.id);
       ws.disconnect();
     };
@@ -141,8 +154,8 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const deleteTask = async (taskId) => {
     try {
       await api.deleteTask(taskId);
-      setTasks(tasks.filter(task => task.id !== taskId));
-      setSelectedTasks(selectedTasks.filter(id => id !== taskId));
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+      setSelectedTasks(prevSelected => prevSelected.filter(id => id !== taskId));
     } catch (err) {
       setError('Failed to delete task');
     }
@@ -232,9 +245,9 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
         )}
 
         {/* Task Creation Form */}
-        <TaskCreationForm 
+        <TaskCreationForm
           taskList={taskList}
-          onTaskCreated={(task) => setTasks([task, ...tasks])}
+          onTaskCreated={() => {}} // WebSocket handles state update
           members={members}
           projects={projects}
           requesters={requesters}
@@ -337,12 +350,13 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
               
               <div className="flex items-center gap-2 flex-wrap">
                 <select
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     if (e.target.value !== '') {
                       const assignedTo = e.target.value === 'unassigned' ? null : parseInt(e.target.value);
-                      selectedTasks.forEach(taskId => updateTask(taskId, { assigned_to: assignedTo }));
+                      const tasksToUpdate = [...selectedTasks];
                       setSelectedTasks([]);
                       e.target.value = '';
+                      await Promise.all(tasksToUpdate.map(taskId => updateTask(taskId, { assigned_to: assignedTo })));
                     }
                   }}
                   defaultValue=""
@@ -356,11 +370,13 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
                 </select>
 
                 <select
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     if (e.target.value !== '') {
-                      selectedTasks.forEach(taskId => updateTask(taskId, { priority: e.target.value }));
+                      const priority = e.target.value;
+                      const tasksToUpdate = [...selectedTasks];
                       setSelectedTasks([]);
                       e.target.value = '';
+                      await Promise.all(tasksToUpdate.map(taskId => updateTask(taskId, { priority })));
                     }
                   }}
                   defaultValue=""
@@ -374,19 +390,21 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
                 </select>
                 
                 <button
-                  onClick={() => {
-                    selectedTasks.forEach(taskId => toggleTaskStatus(taskId));
+                  onClick={async () => {
+                    const tasksToToggle = [...selectedTasks];
                     setSelectedTasks([]);
+                    await Promise.all(tasksToToggle.map(taskId => toggleTaskStatus(taskId)));
                   }}
                   className="px-3 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/70 text-sm whitespace-nowrap"
                 >
                   Toggle Status
                 </button>
-                
+
                 <button
-                  onClick={() => {
-                    selectedTasks.forEach(taskId => deleteTask(taskId));
+                  onClick={async () => {
+                    const tasksToDelete = [...selectedTasks];
                     setSelectedTasks([]);
+                    await Promise.all(tasksToDelete.map(taskId => deleteTask(taskId)));
                   }}
                   className="px-3 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 text-sm"
                 >
