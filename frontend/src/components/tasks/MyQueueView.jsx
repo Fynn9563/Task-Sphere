@@ -62,15 +62,15 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
           </div>
         </div>
 
-        <button
-          onClick={() => onRemove(task.id)}
-          className="absolute right-2 top-2 z-10 p-1.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70"
-          title="Remove from queue"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="pl-10 pr-12 relative">
+          <button
+            onClick={() => onRemove(task.id)}
+            className="absolute -right-2 top-2 z-10 p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/70"
+            title="Remove from queue"
+          >
+            <X className="w-4 h-4" />
+          </button>
 
-        <div className="pl-10">
           <TaskCard
             task={task}
             onToggleStatus={(taskId) => {
