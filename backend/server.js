@@ -8,6 +8,7 @@ const http = require('http');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const validator = require('validator');
+const cron = require('node-cron');
 require('dotenv').config();
 
 const app = express();
@@ -1139,11 +1140,23 @@ io.on('connection', (socket) => {
   });
 });
 
+// Database keep-alive job - runs once per day at 3 AM
+cron.schedule('0 3 * * *', async () => {
+  try {
+    console.log('🔄 Running database keep-alive ping...');
+    await pool.query('SELECT 1');
+    console.log('✅ Database keep-alive ping successful');
+  } catch (error) {
+    console.error('❌ Database keep-alive ping failed:', error);
+  }
+});
+
 // Initialize database and start server
 initDatabase().then(() => {
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log('⏰ Database keep-alive job scheduled (daily at 3 AM)');
   });
 });
 
