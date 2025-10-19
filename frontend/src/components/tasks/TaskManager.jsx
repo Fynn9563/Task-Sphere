@@ -1,6 +1,6 @@
 // components/tasks/TaskManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Share2, Trash2, LogOut, Loader, Filter } from 'lucide-react';
+import { Search, Share2, Trash2, LogOut, Loader, Filter, ListChecks, ListOrdered } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { ApiService } from '../../services/ApiService';
 import { WebSocketService } from '../../services/WebSocketService';
@@ -8,6 +8,7 @@ import DarkModeToggle from '../ui/DarkModeToggle';
 import NotificationBell from '../ui/NotificationBell';
 import TaskCreationForm from './TaskCreationForm';
 import TaskCard from './TaskCard';
+import MyQueueView from './MyQueueView';
 
 // Complete Task Manager Component
 const TaskManager = ({ taskList, onBack, initialTaskId }) => {
@@ -26,8 +27,9 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [error, setError] = useState('');
-  
-  const { logout } = useAuth();
+  const [activeView, setActiveView] = useState('tasks'); // 'tasks' or 'queue'
+
+  const { logout, user } = useAuth();
   const api = new ApiService();
   const ws = new WebSocketService();
 
@@ -164,22 +166,48 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const updateTask = async (taskId, updates) => {
     try {
       console.log('Updating task:', taskId, 'with:', updates);
-      
+
       // Get the complete updated task from the server
       const updatedTask = await api.updateTask(taskId, updates);
-      
+
       console.log('Received updated task from server:', updatedTask);
-      
+
       // Update the local state with the complete task data from server
-      setTasks(prevTasks => prevTasks.map(task => 
+      setTasks(prevTasks => prevTasks.map(task =>
         task.id === taskId ? updatedTask : task
       ));
-      
+
       console.log('Updated local task state');
-      
+
     } catch (err) {
       console.error('Failed to update task:', err);
       setError('Failed to update task');
+    }
+  };
+
+  const handleAddToQueue = async (taskId) => {
+    try {
+      const updatedTask = await api.addToQueue(user.id, taskId);
+      // Update only the specific task in local state (no loading screen)
+      setTasks(prevTasks => prevTasks.map(task =>
+        task.id === taskId ? updatedTask : task
+      ));
+    } catch (err) {
+      console.error('Failed to add to queue:', err);
+      setError('Failed to add task to queue');
+    }
+  };
+
+  const handleRemoveFromQueue = async (taskId) => {
+    try {
+      await api.removeFromQueue(user.id, taskId);
+      // Update only the specific task in local state (no loading screen)
+      setTasks(prevTasks => prevTasks.map(task =>
+        task.id === taskId ? { ...task, queue_position: null } : task
+      ));
+    } catch (err) {
+      console.error('Failed to remove from queue:', err);
+      setError('Failed to remove task from queue');
     }
   };
 
@@ -253,7 +281,36 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
           requesters={requesters}
         />
 
-        {/* Filters */}
+        {/* View Tabs */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-2 mb-6">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveView('tasks')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                activeView === 'tasks'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              <ListChecks className="w-4 h-4" />
+              All Tasks
+            </button>
+            <button
+              onClick={() => setActiveView('queue')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                activeView === 'queue'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              <ListOrdered className="w-4 h-4" />
+              My Queue
+            </button>
+          </div>
+        </div>
+
+        {/* Filters (only show on tasks view) */}
+        {activeView === 'tasks' && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
@@ -339,9 +396,10 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             </div>
           </div>
         </div>
+        )}
 
-        {/* Bulk Actions */}
-        {selectedTasks.length > 0 && (
+        {/* Bulk Actions (only show on tasks view) */}
+        {activeView === 'tasks' && selectedTasks.length > 0 && (
           <div className="bg-blue-50 dark:bg-blue-900/50 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
             <div className="flex items-center justify-between">
               <span className="text-blue-800 dark:text-blue-200 font-medium">
@@ -415,7 +473,8 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
           </div>
         )}
 
-        {/* Tasks List */}
+        {/* Tasks List (only show on tasks view) */}
+        {activeView === 'tasks' && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
@@ -454,12 +513,14 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
                     className="mt-6 rounded"
                   />
                   <div className="flex-1">
-                    <TaskCard 
-                      key={task.id} 
-                      task={task} 
+                    <TaskCard
+                      key={task.id}
+                      task={task}
                       onToggleStatus={toggleTaskStatus}
                       onDelete={deleteTask}
                       onUpdate={updateTask}
+                      onAddToQueue={handleAddToQueue}
+                      onRemoveFromQueue={handleRemoveFromQueue}
                       members={members}
                       projects={projects}
                       requesters={requesters}
@@ -470,6 +531,19 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             )}
           </div>
         </div>
+        )}
+
+        {/* My Queue View */}
+        {activeView === 'queue' && (
+          <MyQueueView
+            taskList={taskList}
+            tasks={tasks}
+            members={members}
+            projects={projects}
+            requesters={requesters}
+            onTaskUpdate={updateTask}
+          />
+        )}
       </div>
 
       {/* Share Modal */}

@@ -1,11 +1,11 @@
 // components/tasks/TaskCard.jsx
 import React, { useState, useEffect } from 'react';
-import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save } from 'lucide-react';
+import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 
 // Enhanced Task Card Component with comprehensive editing
-const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects, requesters }) => {
+const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects, requesters, onAddToQueue, onRemoveFromQueue }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [editData, setEditData] = useState({
@@ -199,9 +199,15 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
                 {task.estimated_hours}h
               </span>
             )}
+
+            {task.queue_position && (
+              <span className="bg-blue-600 text-white px-2 py-1 rounded-full flex items-center gap-1 font-bold">
+                #{task.queue_position} in queue
+              </span>
+            )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2 ml-4">
           <button
             onClick={() => setIsEditing(!isEditing)}
@@ -210,7 +216,30 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           >
             <Edit3 className="w-4 h-4" />
           </button>
-          
+
+          {/* Add to Queue / Remove from Queue button */}
+          {task.queue_position ? (
+            onRemoveFromQueue && (
+              <button
+                onClick={() => onRemoveFromQueue(task.id)}
+                className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/70 transition-colors"
+                title="Remove from queue"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )
+          ) : (
+            onAddToQueue && (
+              <button
+                onClick={() => onAddToQueue(task.id)}
+                className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/70 transition-colors"
+                title="Add to my queue"
+              >
+                <ListPlus className="w-4 h-4" />
+              </button>
+            )
+          )}
+
           <button
             onClick={() => onToggleStatus(task.id)}
             className={`p-2 rounded-lg transition-colors ${

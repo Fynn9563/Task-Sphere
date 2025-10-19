@@ -308,4 +308,29 @@ export class ApiService {
       method: 'DELETE',
     });
   }
+
+  // Queue methods
+  async getQueue(userId) {
+    return this.request(`/users/${userId}/queue`);
+  }
+
+  async addToQueue(userId, taskId) {
+    return this.request(`/users/${userId}/queue`, {
+      method: 'POST',
+      body: { taskId },
+    });
+  }
+
+  async reorderQueue(userId, taskOrders) {
+    return this.request(`/users/${userId}/queue/reorder`, {
+      method: 'PUT',
+      body: { taskOrders },
+    });
+  }
+
+  async removeFromQueue(userId, taskId) {
+    return this.request(`/users/${userId}/queue/${taskId}`, {
+      method: 'DELETE',
+    });
+  }
 }

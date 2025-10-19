@@ -15,7 +15,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || ["http://localhost:5173", "http://localhost:5174"],
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
@@ -41,7 +41,7 @@ const pool = new Pool({
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || ['http://localhost:5173', 'http://localhost:5174'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -180,12 +180,23 @@ const initDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS user_task_queue (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        queue_position INTEGER NOT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, task_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_list_id ON tasks(task_list_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_list_members_user ON task_list_members(user_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
       CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+      CREATE INDEX IF NOT EXISTS idx_user_task_queue_user ON user_task_queue(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_task_queue_position ON user_task_queue(user_id, queue_position);
     `);
     console.log('✅ Database initialized successfully');
   } catch (error) {
@@ -691,15 +702,17 @@ app.get('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     const result = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
-             assigned_user.name as assigned_to_name, creator.name as created_by_name
+             assigned_user.name as assigned_to_name, creator.name as created_by_name,
+             utq.queue_position
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
       LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
       LEFT JOIN users creator ON t.created_by = creator.id
+      LEFT JOIN user_task_queue utq ON t.id = utq.task_id AND utq.user_id = $2
       WHERE t.task_list_id = $1
       ORDER BY t.created_at DESC
-    `, [id]);
+    `, [id, req.user.userId]);
 
     res.json(result.rows);
   } catch (error) {
@@ -769,19 +782,20 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
        estimatedHours || null, req.user.userId]
     );
 
-    // Get the complete task with related data
+    // Get the complete task with related data (including queue position for creator)
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
-             tl.name as task_list_name
+             tl.name as task_list_name, utq.queue_position
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
       LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
       LEFT JOIN users creator ON t.created_by = creator.id
       LEFT JOIN task_lists tl ON t.task_list_id = tl.id
+      LEFT JOIN user_task_queue utq ON t.id = utq.task_id AND utq.user_id = $2
       WHERE t.id = $1
-    `, [result.rows[0].id]);
+    `, [result.rows[0].id, req.user.userId]);
 
     const newTask = taskResult.rows[0];
 
@@ -882,14 +896,16 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     // Get the complete task with related data
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
-             assigned_user.name as assigned_to_name, creator.name as created_by_name
+             assigned_user.name as assigned_to_name, creator.name as created_by_name,
+             utq.queue_position
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
       LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
       LEFT JOIN users creator ON t.created_by = creator.id
+      LEFT JOIN user_task_queue utq ON t.id = utq.task_id AND utq.user_id = $2
       WHERE t.id = $1
-    `, [id]);
+    `, [id, req.user.userId]);
 
     const updatedTask = taskResult.rows[0];
 
@@ -1069,6 +1085,162 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Delete project error:', error);
     res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
+// Queue Routes
+// Get user's task queue
+app.get('/api/users/:userId/queue', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verify user is requesting their own queue
+    if (parseInt(userId) !== req.user.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = await pool.query(`
+      SELECT t.*, p.name as project_name, r.name as requester_name,
+             assigned_user.name as assigned_to_name, creator.name as created_by_name,
+             utq.queue_position, utq.added_at as queued_at
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN requesters r ON t.requester_id = r.id
+      LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
+      LEFT JOIN users creator ON t.created_by = creator.id
+      WHERE utq.user_id = $1
+      ORDER BY utq.queue_position ASC
+    `, [userId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get queue error:', error);
+    res.status(500).json({ error: 'Failed to fetch queue' });
+  }
+});
+
+// Add task to queue
+app.post('/api/users/:userId/queue', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { taskId } = req.body;
+
+    // Verify user is modifying their own queue
+    if (parseInt(userId) !== req.user.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get the highest position in the queue
+    const maxPosResult = await pool.query(
+      'SELECT COALESCE(MAX(queue_position), 0) as max_pos FROM user_task_queue WHERE user_id = $1',
+      [userId]
+    );
+
+    const newPosition = maxPosResult.rows[0].max_pos + 1;
+
+    // Insert into queue
+    await pool.query(
+      'INSERT INTO user_task_queue (user_id, task_id, queue_position) VALUES ($1, $2, $3) ON CONFLICT (user_id, task_id) DO NOTHING',
+      [userId, taskId, newPosition]
+    );
+
+    // Return the full task with queue info
+    const result = await pool.query(`
+      SELECT t.*, p.name as project_name, r.name as requester_name,
+             assigned_user.name as assigned_to_name, creator.name as created_by_name,
+             utq.queue_position, utq.added_at as queued_at
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN requesters r ON t.requester_id = r.id
+      LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
+      LEFT JOIN users creator ON t.created_by = creator.id
+      WHERE utq.user_id = $1 AND utq.task_id = $2
+    `, [userId, taskId]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Add to queue error:', error);
+    res.status(500).json({ error: 'Failed to add task to queue' });
+  }
+});
+
+// Reorder queue (bulk update for drag-drop)
+app.put('/api/users/:userId/queue/reorder', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { taskOrders } = req.body; // Array of { taskId, position }
+
+    // Verify user is modifying their own queue
+    if (parseInt(userId) !== req.user.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Use a transaction to update all positions atomically
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const { taskId, position } of taskOrders) {
+        await client.query(
+          'UPDATE user_task_queue SET queue_position = $1 WHERE user_id = $2 AND task_id = $3',
+          [position, userId, taskId]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Queue reordered successfully' });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Reorder queue error:', error);
+    res.status(500).json({ error: 'Failed to reorder queue' });
+  }
+});
+
+// Remove task from queue
+app.delete('/api/users/:userId/queue/:taskId', authenticateToken, async (req, res) => {
+  try {
+    const { userId, taskId } = req.params;
+
+    // Verify user is modifying their own queue
+    if (parseInt(userId) !== req.user.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get the position of the task being removed
+    const posResult = await pool.query(
+      'SELECT queue_position FROM user_task_queue WHERE user_id = $1 AND task_id = $2',
+      [userId, taskId]
+    );
+
+    if (posResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not in queue' });
+    }
+
+    const removedPosition = posResult.rows[0].queue_position;
+
+    // Remove from queue
+    await pool.query(
+      'DELETE FROM user_task_queue WHERE user_id = $1 AND task_id = $2',
+      [userId, taskId]
+    );
+
+    // Adjust positions of tasks that were after the removed task
+    await pool.query(
+      'UPDATE user_task_queue SET queue_position = queue_position - 1 WHERE user_id = $1 AND queue_position > $2',
+      [userId, removedPosition]
+    );
+
+    res.json({ message: 'Task removed from queue' });
+  } catch (error) {
+    console.error('Remove from queue error:', error);
+    res.status(500).json({ error: 'Failed to remove task from queue' });
   }
 });
 
