@@ -1093,26 +1093,49 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
 app.get('/api/users/:userId/queue', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
+    const { taskListId } = req.query; // Get task list ID from query params
 
     // Verify user is requesting their own queue
     if (parseInt(userId) !== req.user.userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const result = await pool.query(`
-      SELECT t.*, p.name as project_name, r.name as requester_name,
-             assigned_user.name as assigned_to_name, creator.name as created_by_name,
-             utq.queue_position, utq.added_at as queued_at
-      FROM user_task_queue utq
-      JOIN tasks t ON utq.task_id = t.id
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN requesters r ON t.requester_id = r.id
-      LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
-      LEFT JOIN users creator ON t.created_by = creator.id
-      WHERE utq.user_id = $1
-      ORDER BY utq.queue_position ASC
-    `, [userId]);
+    // Filter by task list if provided
+    let query, params;
+    if (taskListId) {
+      query = `
+        SELECT t.*, p.name as project_name, r.name as requester_name,
+               assigned_user.name as assigned_to_name, creator.name as created_by_name,
+               utq.queue_position, utq.added_at as queued_at
+        FROM user_task_queue utq
+        JOIN tasks t ON utq.task_id = t.id
+        LEFT JOIN projects p ON t.project_id = p.id
+        LEFT JOIN requesters r ON t.requester_id = r.id
+        LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
+        LEFT JOIN users creator ON t.created_by = creator.id
+        WHERE utq.user_id = $1 AND t.task_list_id = $2
+        ORDER BY utq.queue_position ASC
+      `;
+      params = [userId, taskListId];
+    } else {
+      // Legacy support - get all queue items
+      query = `
+        SELECT t.*, p.name as project_name, r.name as requester_name,
+               assigned_user.name as assigned_to_name, creator.name as created_by_name,
+               utq.queue_position, utq.added_at as queued_at
+        FROM user_task_queue utq
+        JOIN tasks t ON utq.task_id = t.id
+        LEFT JOIN projects p ON t.project_id = p.id
+        LEFT JOIN requesters r ON t.requester_id = r.id
+        LEFT JOIN users assigned_user ON t.assigned_to = assigned_user.id
+        LEFT JOIN users creator ON t.created_by = creator.id
+        WHERE utq.user_id = $1
+        ORDER BY utq.queue_position ASC
+      `;
+      params = [userId];
+    }
 
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Get queue error:', error);
@@ -1131,11 +1154,25 @@ app.post('/api/users/:userId/queue', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get the highest position in the queue
-    const maxPosResult = await pool.query(
-      'SELECT COALESCE(MAX(queue_position), 0) as max_pos FROM user_task_queue WHERE user_id = $1',
-      [userId]
+    // Get the task's task_list_id
+    const taskResult = await pool.query(
+      'SELECT task_list_id FROM tasks WHERE id = $1',
+      [taskId]
     );
+
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const taskListId = taskResult.rows[0].task_list_id;
+
+    // Get the highest position in the queue FOR THIS TASK LIST
+    const maxPosResult = await pool.query(`
+      SELECT COALESCE(MAX(utq.queue_position), 0) as max_pos
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      WHERE utq.user_id = $1 AND t.task_list_id = $2
+    `, [userId, taskListId]);
 
     const newPosition = maxPosResult.rows[0].max_pos + 1;
 
@@ -1213,17 +1250,20 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, async (req, re
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get the position of the task being removed
-    const posResult = await pool.query(
-      'SELECT queue_position FROM user_task_queue WHERE user_id = $1 AND task_id = $2',
-      [userId, taskId]
-    );
+    // Get the task's task_list_id and position
+    const taskInfoResult = await pool.query(`
+      SELECT utq.queue_position, t.task_list_id
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      WHERE utq.user_id = $1 AND utq.task_id = $2
+    `, [userId, taskId]);
 
-    if (posResult.rows.length === 0) {
+    if (taskInfoResult.rows.length === 0) {
       return res.status(404).json({ error: 'Task not in queue' });
     }
 
-    const removedPosition = posResult.rows[0].queue_position;
+    const removedPosition = taskInfoResult.rows[0].queue_position;
+    const taskListId = taskInfoResult.rows[0].task_list_id;
 
     // Remove from queue
     await pool.query(
@@ -1231,11 +1271,16 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, async (req, re
       [userId, taskId]
     );
 
-    // Adjust positions of tasks that were after the removed task
-    await pool.query(
-      'UPDATE user_task_queue SET queue_position = queue_position - 1 WHERE user_id = $1 AND queue_position > $2',
-      [userId, removedPosition]
-    );
+    // Adjust positions of tasks that were after the removed task IN THE SAME TASK LIST
+    await pool.query(`
+      UPDATE user_task_queue utq
+      SET queue_position = queue_position - 1
+      FROM tasks t
+      WHERE utq.task_id = t.id
+        AND utq.user_id = $1
+        AND t.task_list_id = $2
+        AND utq.queue_position > $3
+    `, [userId, taskListId, removedPosition]);
 
     res.json({ message: 'Task removed from queue' });
   } catch (error) {

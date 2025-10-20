@@ -310,8 +310,11 @@ export class ApiService {
   }
 
   // Queue methods
-  async getQueue(userId) {
-    return this.request(`/users/${userId}/queue`);
+  async getQueue(userId, taskListId = null) {
+    const url = taskListId
+      ? `/users/${userId}/queue?taskListId=${taskListId}`
+      : `/users/${userId}/queue`;
+    return this.request(url);
   }
 
   async addToQueue(userId, taskId) {

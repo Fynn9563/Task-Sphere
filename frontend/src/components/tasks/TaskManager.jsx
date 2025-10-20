@@ -211,6 +211,13 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
     }
   };
 
+  // Update queue position in local state only (called by MyQueueView after API call)
+  const updateQueuePositionLocally = (taskId) => {
+    setTasks(prevTasks => prevTasks.map(task =>
+      task.id === taskId ? { ...task, queue_position: null } : task
+    ));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
@@ -542,6 +549,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             projects={projects}
             requesters={requesters}
             onTaskUpdate={updateTask}
+            onRemoveFromQueue={updateQueuePositionLocally}
           />
         )}
       </div>
