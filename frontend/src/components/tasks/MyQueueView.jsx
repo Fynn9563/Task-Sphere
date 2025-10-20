@@ -74,7 +74,10 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
               onRemove(taskId);
             }}
             onUpdate={onUpdate}
-            onRemoveFromQueue={onRemove}
+            onRemoveFromQueue={(taskId) => {
+              console.log('TaskCard onRemoveFromQueue called, delegating to onRemove');
+              onRemove(taskId);
+            }}
             members={members}
             projects={projects}
             requesters={requesters}
@@ -86,7 +89,7 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
 };
 
 // Main Queue View Component
-const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onRemoveFromQueue }) => {
+const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onAddToQueue, onRemoveFromQueue }) => {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -163,7 +166,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
       setQueue(queueData);
     } catch (err) {
       console.error('Failed to load queue:', err);
-      setError('Failed to load queue');
+      setError(err.message || 'Failed to load queue');
     } finally {
       setLoading(false);
     }
@@ -194,7 +197,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
       setError(''); // Clear any previous errors
     } catch (err) {
       console.error('Failed to reorder queue:', err);
-      setError('Failed to save new order');
+      setError(err.message || 'Failed to save new order');
       // Revert on error
       loadQueue();
     }
@@ -206,35 +209,61 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     try {
       setOperationLoading(true);
       setError(''); // Clear previous errors
+
+      // Add to queue via API
       await api.addToQueue(user.id, taskId);
-      await loadQueue();
+
+      // Reload queue to get updated positions
+      const queueData = await api.getQueue(user.id, taskList.id);
+      setQueue(queueData);
+
+      // Find the newly added task's position
+      const addedTask = queueData.find(t => t.id === taskId);
+      if (addedTask && onAddToQueue) {
+        onAddToQueue(taskId, addedTask.queue_position);
+      }
+
       setShowAddModal(false);
     } catch (err) {
       console.error('Failed to add to queue:', err);
-      setError('Failed to add task to queue');
+      setError(err.message || 'Failed to add task to queue');
     } finally {
       setOperationLoading(false);
     }
   };
 
   const handleRemoveFromQueue = async (taskId) => {
-    if (operationLoading) return; // Prevent double-clicks
+    console.log('handleRemoveFromQueue called for task:', taskId);
+    console.log('operationLoading state:', operationLoading);
+    if (operationLoading) {
+      console.log('Operation already in progress, returning early');
+      return; // Prevent double-clicks
+    }
 
     try {
       setOperationLoading(true);
       setError(''); // Clear previous errors
 
       // Remove from queue via API
+      console.log('Calling API to remove from queue...');
       await api.removeFromQueue(user.id, taskId);
 
-      // Reload queue and notify parent in parallel
-      await Promise.all([
-        loadQueue(),
-        onRemoveFromQueue ? onRemoveFromQueue(taskId) : Promise.resolve()
-      ]);
+      // Reload queue to get updated positions
+      console.log('Reloading queue data...');
+      const queueData = await api.getQueue(user.id, taskList.id);
+      console.log('Updated queue data:', queueData);
+      setQueue(queueData);
+
+      // Notify parent to update all queue positions
+      if (onRemoveFromQueue) {
+        console.log('Calling parent onRemoveFromQueue callback...');
+        onRemoveFromQueue(taskId, queueData);
+      } else {
+        console.log('No onRemoveFromQueue callback provided!');
+      }
     } catch (err) {
       console.error('Failed to remove from queue:', err);
-      setError('Failed to remove task from queue');
+      setError(err.message || 'Failed to remove task from queue');
     } finally {
       setOperationLoading(false);
     }

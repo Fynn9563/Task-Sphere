@@ -115,8 +115,19 @@ export class ApiService {
     if (!validateEmail(sanitizedEmail)) {
       throw new Error('Invalid email format');
     }
-    if (password.length < 6) {
-      throw new Error('Password must be at least 6 characters');
+
+    // Password complexity validation
+    if (password.length < 8) {
+      throw new Error('Password must be at least 8 characters long');
+    }
+    if (!/[A-Z]/.test(password)) {
+      throw new Error('Password must contain at least one uppercase letter');
+    }
+    if (!/[a-z]/.test(password)) {
+      throw new Error('Password must contain at least one lowercase letter');
+    }
+    if (!/[0-9]/.test(password)) {
+      throw new Error('Password must contain at least one number');
     }
     
     const data = await this.request('/auth/register', {

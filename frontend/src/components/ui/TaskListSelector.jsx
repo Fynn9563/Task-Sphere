@@ -47,7 +47,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
       setTaskLists(lists);
     } catch (err) {
       console.error('Error loading task lists:', err); // Debug log
-      setError('Failed to load task lists');
+      setError(err.message || 'Failed to load task lists');
     } finally {
       setLoading(false);
     }

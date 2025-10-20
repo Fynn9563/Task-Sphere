@@ -4,6 +4,47 @@ import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus 
 import { useAuth } from '../../hooks/useAuth';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 
+// Helper function to format estimated hours for display
+const formatEstimatedHours = (hours) => {
+  if (!hours || hours === 0) return null;
+
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+
+  if (h === 0) {
+    return `${m}min`;
+  } else if (m === 0) {
+    return `${h}h`;
+  } else {
+    return `${h}h ${m}min`;
+  }
+};
+
+// Convert decimal hours to HH:MM format for input
+const hoursToTimeString = (hours) => {
+  if (!hours) return '';
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}:${m.toString().padStart(2, '0')}`;
+};
+
+// Convert HH:MM format to decimal hours
+const timeStringToHours = (timeString) => {
+  if (!timeString || timeString === '') return null;
+
+  const parts = timeString.split(':');
+  if (parts.length !== 2) return null;
+
+  const hours = parseInt(parts[0]) || 0;
+  const minutes = parseInt(parts[1]) || 0;
+
+  if (hours < 0 || minutes < 0 || minutes >= 60) return null;
+
+  return hours + (minutes / 60);
+};
+
 // Enhanced Task Card Component with comprehensive editing
 const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects, requesters, onAddToQueue, onRemoveFromQueue }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -16,7 +57,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
     project_id: task.project_id || '',
     requester_id: task.requester_id || '',
     due_date: task.due_date || '',
-    estimated_hours: task.estimated_hours || ''
+    estimated_hours: hoursToTimeString(task.estimated_hours)
   });
   const [editErrors, setEditErrors] = useState({});
   const { user } = useAuth();
@@ -31,7 +72,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
       project_id: task.project_id || '',
       requester_id: task.requester_id || '',
       due_date: task.due_date || '',
-      estimated_hours: task.estimated_hours || ''
+      estimated_hours: hoursToTimeString(task.estimated_hours)
     });
     setEditErrors({}); // Clear errors when task changes
   }, [task]);
@@ -50,8 +91,13 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
       errors.description = 'Description contains invalid characters or is too long';
     }
     
-    if (editData.estimated_hours && (isNaN(editData.estimated_hours) || parseFloat(editData.estimated_hours) < 0)) {
-      errors.estimated_hours = 'Invalid estimated hours';
+    if (editData.estimated_hours) {
+      const hours = timeStringToHours(editData.estimated_hours);
+      if (hours === null) {
+        errors.estimated_hours = 'Invalid time format. Use H:MM (e.g., 1:30 for 1 hour 30 minutes)';
+      } else if (hours > 999.99) {
+        errors.estimated_hours = 'Estimated hours cannot exceed 999 hours';
+      }
     }
     
     setEditErrors(errors);
@@ -105,7 +151,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
         project_id: editData.project_id === "" ? null : parseInt(editData.project_id) || null,
         requester_id: editData.requester_id === "" ? null : parseInt(editData.requester_id) || null,
         due_date: editData.due_date || null,
-        estimated_hours: editData.estimated_hours ? parseFloat(editData.estimated_hours) : null
+        estimated_hours: timeStringToHours(editData.estimated_hours)
       };
       
       console.log('Processed update data:', updatesData);
@@ -193,10 +239,10 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               </span>
             )}
             
-            {task.estimated_hours && (
+            {formatEstimatedHours(task.estimated_hours) && (
               <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded-full flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {task.estimated_hours}h
+                {formatEstimatedHours(task.estimated_hours)}
               </span>
             )}
 
@@ -221,7 +267,11 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           {task.queue_position ? (
             onRemoveFromQueue && (
               <button
-                onClick={() => onRemoveFromQueue(task.id)}
+                onClick={() => {
+                  console.log('Remove from queue button clicked for task:', task.id);
+                  console.log('onRemoveFromQueue function:', onRemoveFromQueue);
+                  onRemoveFromQueue(task.id);
+                }}
                 className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/70 transition-colors"
                 title="Remove from queue"
               >
@@ -409,19 +459,17 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
             
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Estimated Hours
+                Estimated Time
               </label>
               <input
-                type="number"
-                step="0.5"
-                min="0"
+                type="text"
                 value={editData.estimated_hours}
                 onChange={(e) => {
                   setEditData({...editData, estimated_hours: e.target.value});
                   if (editErrors.estimated_hours) setEditErrors({...editErrors, estimated_hours: ''});
                 }}
                 disabled={updateLoading}
-                placeholder="e.g., 2.5"
+                placeholder="e.g., 1:30 or 0:45"
                 className={`w-full px-2 py-1 text-sm border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${
                   editErrors.estimated_hours ? 'border-red-300 dark:border-red-600' : 'border-gray-300 dark:border-gray-600'
                 }`}
@@ -447,7 +495,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
                   project_id: task.project_id || '',
                   requester_id: task.requester_id || '',
                   due_date: task.due_date || '',
-                  estimated_hours: task.estimated_hours || ''
+                  estimated_hours: hoursToTimeString(task.estimated_hours)
                 });
               }}
               className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"

@@ -8,6 +8,7 @@ const http = require('http');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const validator = require('validator');
+const Joi = require('joi');
 const cron = require('node-cron');
 require('dotenv').config();
 
@@ -26,11 +27,39 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 
+// HTTPS enforcement in production
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.header('x-forwarded-proto') !== 'https') {
+      res.redirect(`https://${req.header('host')}${req.url}`);
+    } else {
+      next();
+    }
+  });
+}
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100 // limit each IP to 100 requests per windowMs
 });
+
+// Stricter rate limiting for authentication endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: { error: 'Too many authentication attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting for queue operations
+const queueLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each IP to 50 requests per windowMs
+  message: { error: 'Too many queue operations, please try again later' }
+});
+
 app.use('/api/', limiter);
 
 // Database connection
@@ -63,6 +92,78 @@ const sanitizeInput = (input) => {
   return validator.escape(input.trim());
 };
 
+// Security logging utility
+const securityLog = (eventType, details, req = null) => {
+  const timestamp = new Date().toISOString();
+  const ip = req ? (req.ip || req.connection.remoteAddress) : 'N/A';
+  const userId = req?.user?.userId || 'anonymous';
+
+  console.log(`[SECURITY] [${eventType}] [${timestamp}] [User: ${userId}] [IP: ${ip}] ${JSON.stringify(details)}`);
+};
+
+// Password validation helper
+const validatePassword = (password) => {
+  if (password.length < 8) {
+    return { valid: false, error: 'Password must be at least 8 characters long' };
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one uppercase letter' };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one lowercase letter' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one number' };
+  }
+  return { valid: true };
+};
+
+// Joi Validation Schemas
+const schemas = {
+  // Task creation/update schema
+  task: Joi.object({
+    name: Joi.string().min(1).max(500).required().messages({
+      'string.empty': 'Task name is required',
+      'string.max': 'Task name must be less than 500 characters',
+      'any.required': 'Task name is required'
+    }),
+    description: Joi.string().max(2000).allow(null, '').messages({
+      'string.max': 'Description must be less than 2000 characters'
+    }),
+    priority: Joi.string().valid('low', 'medium', 'high', 'urgent').messages({
+      'any.only': 'Priority must be one of: low, medium, high, urgent'
+    }),
+    projectId: Joi.number().integer().allow(null),
+    requesterId: Joi.number().integer().allow(null),
+    assignedTo: Joi.alternatives().try(Joi.number().integer(), Joi.string()).allow(null),
+    dueDate: Joi.date().iso().allow(null).messages({
+      'date.format': 'Due date must be a valid date'
+    }),
+    estimatedHours: Joi.number().min(0).max(999.99).allow(null).messages({
+      'number.min': 'Estimated hours cannot be negative',
+      'number.max': 'Estimated hours cannot exceed 999.99'
+    }),
+    estimated_hours: Joi.number().min(0).max(999.99).allow(null).messages({
+      'number.min': 'Estimated hours cannot be negative',
+      'number.max': 'Estimated hours cannot exceed 999.99'
+    }),
+    dayAssigned: Joi.string().allow(null),
+    status: Joi.boolean()
+  }),
+
+  // Task list schema
+  taskList: Joi.object({
+    name: Joi.string().min(1).max(200).required().messages({
+      'string.empty': 'Task list name is required',
+      'string.max': 'Task list name must be less than 200 characters',
+      'any.required': 'Task list name is required'
+    }),
+    description: Joi.string().max(1000).allow(null, '').messages({
+      'string.max': 'Description must be less than 1000 characters'
+    })
+  })
+};
+
 // Test route
 app.get('/', (req, res) => {
   res.json({ message: 'Task Sphere API is running!' });
@@ -79,6 +180,7 @@ const authenticateToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
+    securityLog('AUTH_FAILURE', { reason: 'No token provided', path: req.path }, req);
     return res.status(401).json({ error: 'Access token required' });
   }
 
@@ -86,8 +188,10 @@ const authenticateToken = (req, res, next) => {
     if (err) {
       console.error('JWT verification error:', err);
       if (err.name === 'TokenExpiredError') {
+        securityLog('AUTH_FAILURE', { reason: 'Token expired', path: req.path }, req);
         return res.status(403).json({ error: 'Token expired', needsRefresh: true });
       }
+      securityLog('AUTH_FAILURE', { reason: 'Invalid token', error: err.message, path: req.path }, req);
       return res.status(403).json({ error: 'Invalid token' });
     }
     console.log('JWT decoded user:', user);
@@ -251,7 +355,7 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
 };
 
 // Auth Routes
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body;
     
@@ -263,9 +367,11 @@ app.post('/api/auth/register', async (req, res) => {
     if (!validator.isEmail(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
-    
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+    // Validate password complexity
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ error: passwordValidation.error });
     }
     
     // Sanitize inputs
@@ -305,32 +411,34 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    
+
     const sanitizedEmail = sanitizeInput(email.toLowerCase());
-    
+
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [sanitizedEmail]);
     const user = result.rows[0];
 
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
+      securityLog('LOGIN_FAILURE', { email: sanitizedEmail, reason: 'Invalid credentials' }, req);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     console.log('User logging in:', { id: user.id, email: user.email });
-    
+    securityLog('LOGIN_SUCCESS', { userId: user.id, email: sanitizedEmail }, req);
+
     const { accessToken, refreshToken } = generateTokens(user.id);
-    
+
     // Update refresh token in database
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, user.id]);
 
-    res.json({ 
-      user: { id: user.id, email: user.email, name: user.name }, 
+    res.json({
+      user: { id: user.id, email: user.email, name: user.name },
       token: accessToken,
       refreshToken
     });
@@ -414,9 +522,12 @@ app.get('/api/task-lists', authenticateToken, async (req, res) => {
 app.post('/api/task-lists', authenticateToken, async (req, res) => {
   try {
     const { name, description } = req.body;
-    
-    if (!name || name.trim().length === 0) {
-      return res.status(400).json({ error: 'Task list name is required' });
+
+    // Joi Validation
+    const { error } = schemas.taskList.validate(req.body, { abortEarly: false });
+    if (error) {
+      const errorMessage = error.details.map(detail => detail.message).join('; ');
+      return res.status(400).json({ error: errorMessage });
     }
     
     const sanitizedName = sanitizeInput(name);
@@ -483,14 +594,20 @@ app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
     const taskList = ownerCheck.rows[0];
     
     if (taskList.owner_id !== req.user.userId) {
+      securityLog('ACCESS_DENIED', {
+        reason: 'Non-owner attempted to delete task list',
+        taskListId: id,
+        ownerId: taskList.owner_id
+      }, req);
       return res.status(403).json({ error: 'Only the owner can delete this task list' });
     }
-    
+
     // Delete the task list (CASCADE will handle related data)
     await pool.query('DELETE FROM task_lists WHERE id = $1', [id]);
-    
+
     console.log('Task list deleted successfully:', id);
-    
+    securityLog('TASK_LIST_DELETED', { taskListId: id }, req);
+
     res.json({ message: 'Task list deleted successfully' });
   } catch (error) {
     console.error('Delete task list error:', error);
@@ -725,10 +842,12 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, projectId, requesterId, priority, assignedTo, dueDate, estimatedHours } = req.body;
-    
-    // Validation
-    if (!name || name.trim().length === 0) {
-      return res.status(400).json({ error: 'Task name is required' });
+
+    // Joi Validation
+    const { error } = schemas.task.validate(req.body, { abortEarly: false });
+    if (error) {
+      const errorMessage = error.details.map(detail => detail.message).join('; ');
+      return res.status(400).json({ error: errorMessage });
     }
     
     // Verify access
@@ -832,9 +951,18 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    
+
     console.log('Updating task:', id, 'with data:', updates);
-    
+
+    // Joi Validation (allow partial updates)
+    const { error } = schemas.task.validate(updates, { abortEarly: false, allowUnknown: true });
+    if (error) {
+      console.log('Joi validation error:', error.details);
+      const errorMessage = error.details.map(detail => detail.message).join('; ');
+      return res.status(400).json({ error: errorMessage });
+    }
+    console.log('Joi validation passed');
+
     // Get the original task to check for assignment changes
     const originalTaskResult = await pool.query(
       'SELECT assigned_to, task_list_id FROM tasks WHERE id = $1',
@@ -850,28 +978,35 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     // Validate that we have updates to make
     const validUpdates = {};
     const allowedFields = [
-      'name', 'description', 'status', 'priority', 
-      'due_date', 'estimated_hours', 'project_id', 'requester_id', 'assigned_to'
+      'name', 'description', 'status', 'priority',
+      'due_date', 'estimated_hours', 'estimatedHours', 'project_id', 'projectId',
+      'requester_id', 'requesterId', 'assigned_to', 'assignedTo', 'day_assigned', 'dayAssigned'
     ];
     
-    // Filter and sanitize updates
+    // Helper function to convert camelCase to snake_case
+    const toSnakeCase = (str) => {
+      return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    };
+
+    // Filter and sanitize updates, converting camelCase to snake_case
     Object.keys(updates).forEach(key => {
       if (allowedFields.includes(key) && updates[key] !== undefined) {
+        const dbKey = toSnakeCase(key); // Convert to snake_case for database
         if (typeof updates[key] === 'string') {
-          validUpdates[key] = sanitizeInput(updates[key]);
+          validUpdates[dbKey] = sanitizeInput(updates[key]);
         } else {
-          validUpdates[key] = updates[key];
+          validUpdates[dbKey] = updates[key];
         }
       }
     });
-    
+
     // Check if we have any valid updates
     if (Object.keys(validUpdates).length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
-    
+
     console.log('Valid updates:', validUpdates);
-    
+
     // Build dynamic update query with proper parameter indexing
     const setClause = Object.keys(validUpdates)
       .map((key, index) => `${key} = $${index + 2}`)
@@ -1090,14 +1225,36 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
 
 // Queue Routes
 // Get user's task queue
-app.get('/api/users/:userId/queue', authenticateToken, async (req, res) => {
+app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
     const { taskListId } = req.query; // Get task list ID from query params
 
     // Verify user is requesting their own queue
     if (parseInt(userId) !== req.user.userId) {
+      securityLog('ACCESS_DENIED', {
+        reason: 'User attempting to access another user\'s queue',
+        requestedUserId: userId,
+        actualUserId: req.user.userId
+      }, req);
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Verify user is a member of the task list if taskListId is provided
+    if (taskListId) {
+      const memberCheck = await pool.query(
+        'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
+        [taskListId, req.user.userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        securityLog('ACCESS_DENIED', {
+          reason: 'User not a member of requested task list',
+          taskListId,
+          userId: req.user.userId
+        }, req);
+        return res.status(403).json({ error: 'Access denied - not a member of this task list' });
+      }
     }
 
     // Filter by task list if provided
@@ -1144,7 +1301,7 @@ app.get('/api/users/:userId/queue', authenticateToken, async (req, res) => {
 });
 
 // Add task to queue
-app.post('/api/users/:userId/queue', authenticateToken, async (req, res) => {
+app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
     const { taskId } = req.body;
@@ -1204,7 +1361,7 @@ app.post('/api/users/:userId/queue', authenticateToken, async (req, res) => {
 });
 
 // Reorder queue (bulk update for drag-drop)
-app.put('/api/users/:userId/queue/reorder', authenticateToken, async (req, res) => {
+app.put('/api/users/:userId/queue/reorder', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
     const { taskOrders } = req.body; // Array of { taskId, position }
@@ -1241,7 +1398,7 @@ app.put('/api/users/:userId/queue/reorder', authenticateToken, async (req, res) 
 });
 
 // Remove task from queue
-app.delete('/api/users/:userId/queue/:taskId', authenticateToken, async (req, res) => {
+app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId, taskId } = req.params;
 

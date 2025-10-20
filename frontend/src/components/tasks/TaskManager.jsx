@@ -110,7 +110,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       setProjects(projectsData);
       setRequesters(requestersData);
     } catch (err) {
-      setError('Failed to load data');
+      setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -149,7 +149,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       
     } catch (err) {
       console.error('Failed to toggle task status:', err);
-      setError('Failed to update task');
+      setError(err.message || 'Failed to update task');
     }
   };
 
@@ -159,7 +159,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
       setSelectedTasks(prevSelected => prevSelected.filter(id => id !== taskId));
     } catch (err) {
-      setError('Failed to delete task');
+      setError(err.message || 'Failed to delete task');
     }
   };
 
@@ -181,7 +181,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
 
     } catch (err) {
       console.error('Failed to update task:', err);
-      setError('Failed to update task');
+      setError(err.message || 'Failed to update task');
     }
   };
 
@@ -194,27 +194,73 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       ));
     } catch (err) {
       console.error('Failed to add to queue:', err);
-      setError('Failed to add task to queue');
+      setError(err.message || 'Failed to add task to queue');
     }
   };
 
   const handleRemoveFromQueue = async (taskId) => {
     try {
+      console.log('TaskManager handleRemoveFromQueue called for task:', taskId);
+
+      // Remove from queue via API
       await api.removeFromQueue(user.id, taskId);
-      // Update only the specific task in local state (no loading screen)
-      setTasks(prevTasks => prevTasks.map(task =>
-        task.id === taskId ? { ...task, queue_position: null } : task
-      ));
+
+      // Reload queue to get updated positions for all tasks
+      const updatedQueueData = await api.getQueue(user.id, taskList.id);
+      console.log('Updated queue data after removal:', updatedQueueData);
+
+      // Update all task positions based on the fresh queue data
+      setTasks(prevTasks => prevTasks.map(task => {
+        // Clear position for the removed task
+        if (task.id === taskId) {
+          return { ...task, queue_position: null };
+        }
+
+        // Update positions for all remaining queue tasks
+        const queueTask = updatedQueueData.find(qt => qt.id === task.id);
+        if (queueTask) {
+          return { ...task, queue_position: queueTask.queue_position };
+        }
+
+        return task;
+      }));
     } catch (err) {
       console.error('Failed to remove from queue:', err);
-      setError('Failed to remove task from queue');
+      setError(err.message || 'Failed to remove task from queue');
     }
   };
 
-  // Update queue position in local state only (called by MyQueueView after API call)
-  const updateQueuePositionLocally = (taskId) => {
+  // Update queue positions when removed (called by MyQueueView after API call)
+  const updateQueuePositionOnRemove = (removedTaskId, updatedQueueData) => {
+    console.log('updateQueuePositionOnRemove called:', { removedTaskId, updatedQueueData });
+
+    setTasks(prevTasks => {
+      const updatedTasks = prevTasks.map(task => {
+        // Clear position for the removed task
+        if (task.id === removedTaskId) {
+          console.log(`Clearing queue position for task ${task.id}`);
+          return { ...task, queue_position: null };
+        }
+
+        // Update positions for all remaining queue tasks
+        const queueTask = updatedQueueData.find(qt => qt.id === task.id);
+        if (queueTask) {
+          console.log(`Updating task ${task.id} from position ${task.queue_position} to ${queueTask.queue_position}`);
+          return { ...task, queue_position: queueTask.queue_position };
+        }
+
+        return task;
+      });
+
+      console.log('Updated tasks:', updatedTasks);
+      return updatedTasks;
+    });
+  };
+
+  // Update queue position when added (called by MyQueueView after API call)
+  const updateQueuePositionOnAdd = (taskId, position) => {
     setTasks(prevTasks => prevTasks.map(task =>
-      task.id === taskId ? { ...task, queue_position: null } : task
+      task.id === taskId ? { ...task, queue_position: position } : task
     ));
   };
 
@@ -549,7 +595,8 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             projects={projects}
             requesters={requesters}
             onTaskUpdate={updateTask}
-            onRemoveFromQueue={updateQueuePositionLocally}
+            onAddToQueue={updateQueuePositionOnAdd}
+            onRemoveFromQueue={updateQueuePositionOnRemove}
           />
         )}
       </div>

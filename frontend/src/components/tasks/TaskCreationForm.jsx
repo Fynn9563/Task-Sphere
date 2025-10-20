@@ -4,6 +4,21 @@ import { Plus, Loader, AlertCircle, Trash2, X } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 import { ApiService } from '../../services/ApiService';
 
+// Convert HH:MM format to decimal hours
+const timeStringToHours = (timeString) => {
+  if (!timeString || timeString === '') return null;
+
+  const parts = timeString.split(':');
+  if (parts.length !== 2) return null;
+
+  const hours = parseInt(parts[0]) || 0;
+  const minutes = parseInt(parts[1]) || 0;
+
+  if (hours < 0 || minutes < 0 || minutes >= 60) return null;
+
+  return hours + (minutes / 60);
+};
+
 // Enhanced Task Creation Component
 const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requesters }) => {
   const [newTask, setNewTask] = useState({
@@ -71,7 +86,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
         assignedTo: newTask.assigned_to === "" ? null : parseInt(newTask.assigned_to) || null,
         priority: newTask.priority,
         dueDate: newTask.due_date || null,
-        estimatedHours: newTask.estimated_hours ? parseFloat(newTask.estimated_hours) : null,
+        estimatedHours: timeStringToHours(newTask.estimated_hours),
       };
 
       console.log('Creating task with data:', taskData);
@@ -435,16 +450,13 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Estimated Hours
+              Estimated Time
             </label>
             <input
-              type="number"
-              step="0.5"
-              min="0"
-              max="999"
+              type="text"
               value={newTask.estimated_hours}
               onChange={(e) => setNewTask({...newTask, estimated_hours: e.target.value})}
-              placeholder="e.g., 2.5"
+              placeholder="e.g., 1:30 or 0:45"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
