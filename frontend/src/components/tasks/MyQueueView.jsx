@@ -339,7 +339,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
               <div className="space-y-3">
                 {queue.map((task, index) => (
                   <SortableTaskItem
-                    key={task.id}
+                    key={`${task.id}-${index}`}
                     task={task}
                     index={index}
                     onRemove={handleRemoveFromQueue}
