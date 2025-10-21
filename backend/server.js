@@ -122,7 +122,7 @@ const validatePassword = (password) => {
 const schemas = {
   // Task creation/update schema
   task: Joi.object({
-    name: Joi.string().min(1).max(500).required().messages({
+    name: Joi.string().min(1).max(500).optional().messages({
       'string.empty': 'Task name is required',
       'string.max': 'Task name must be less than 500 characters',
       'any.required': 'Task name is required'
