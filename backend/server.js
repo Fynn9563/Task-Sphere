@@ -384,12 +384,14 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body;
-    
-    // Validation
-    if (!email || !password || !name) {
+
+    // Validate input format before processing
+    if (!email || typeof email !== 'string' || email.length === 0 ||
+        !password || typeof password !== 'string' || password.length === 0 ||
+        !name || typeof name !== 'string' || name.length === 0) {
       return res.status(400).json({ error: 'All fields are required' });
     }
-    
+
     if (!validateEmailFormat(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
@@ -441,8 +443,9 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // lgtm[js/user-controlled-bypass] - This is input validation, not a bypass
-    if (!email || !password) {
+    // Validate input format before processing
+    if (!email || typeof email !== 'string' || email.length === 0 ||
+        !password || typeof password !== 'string' || password.length === 0) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
@@ -510,12 +513,12 @@ app.post('/api/auth/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
 
-    // lgtm[js/user-controlled-bypass] - This is input validation, not a bypass
-    if (!refreshToken) {
+    // Validate refresh token format before processing
+    if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.length === 0) {
       return res.status(401).json({ error: 'Refresh token required' });
     }
-    
-    // Verify refresh token
+
+    // Verify refresh token signature and extract payload
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     logger.debug('Refresh token decoded', { userId: sanitizeForLog(decoded.userId) });
     

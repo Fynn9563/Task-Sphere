@@ -1,7 +1,6 @@
 // components/tasks/TaskCard.jsx
 import React, { useState, useEffect } from 'react';
 import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 
 // Helper function to format estimated hours for display

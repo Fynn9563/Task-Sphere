@@ -63,29 +63,21 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     if (!api) throw new Error('API service not initialized');
 
-    try {
-      const data = await api.login(email, password);
-      setUser(data.user);
-      // Clear any previously selected task list when logging in
-      localStorage.removeItem('selectedTaskList');
-      return data;
-    } catch (error) {
-      throw error;
-    }
+    const data = await api.login(email, password);
+    setUser(data.user);
+    // Clear any previously selected task list when logging in
+    localStorage.removeItem('selectedTaskList');
+    return data;
   };
 
   const register = async (email, password, name) => {
     if (!api) throw new Error('API service not initialized');
 
-    try {
-      const data = await api.register(email, password, name);
-      setUser(data.user);
-      // Clear any previously selected task list when registering
-      localStorage.removeItem('selectedTaskList');
-      return data;
-    } catch (error) {
-      throw error;
-    }
+    const data = await api.register(email, password, name);
+    setUser(data.user);
+    // Clear any previously selected task list when registering
+    localStorage.removeItem('selectedTaskList');
+    return data;
   };
 
   const logout = (reason = 'manual') => {
@@ -117,4 +109,5 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);
