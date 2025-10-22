@@ -975,7 +975,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     const newTask = taskResult.rows[0];
 
-    logger.info('Task created', { taskId: sanitizeForLog(newTask.id), taskListId: sanitizeForLog(taskListId) });
+    logger.info('Task created', { taskId: sanitizeForLog(newTask.id), taskListId: sanitizeForLog(id) });
 
     // Create notification if task is assigned to someone (and not to the creator)
     if (processedAssignedTo && processedAssignedTo !== req.user.userId) {
