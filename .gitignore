@@ -14,6 +14,11 @@ node\_modules/
 .env.test
 .env.test.local
 
+# SSL Certificates
+*.crt
+*.pem
+*.key
+
 # Vite cache
 
 node\_modules/.vite/

@@ -1,0 +1,16 @@
+# Semgrep ignore patterns
+
+# Ignore node_modules
+node_modules/
+**/node_modules/
+
+# Ignore build outputs
+dist/
+build/
+**/dist/
+**/build/
+
+# Ignore lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

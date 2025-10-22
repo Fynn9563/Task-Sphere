@@ -70,11 +70,15 @@ const queueLimiter = rateLimit({
 
 app.use('/api/', limiter);
 
-// Database connection
-// Supabase uses proper SSL certificates, so we can use secure SSL in production
+// Database connection with secure SSL
+// Supabase supports proper SSL certificate validation
+// Set SUPABASE_CA_CERT environment variable with the certificate content
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? true : false
+  ssl: process.env.NODE_ENV === 'production' ? {
+    rejectUnauthorized: true,
+    ca: process.env.SUPABASE_CA_CERT // Provide CA certificate from env
+  } : false
 });
 
 // Middleware
