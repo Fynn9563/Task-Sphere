@@ -947,7 +947,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     const sanitizedName = sanitizeInput(name);
     const sanitizedDescription = description ? sanitizeInput(description) : null;
 
-    logger.debug('Creating task', { assignedToCount: processedAssignedTo ? processedAssignedTo.length : 0 });
+    logger.debug('Creating task', { assignedTo: processedAssignedTo });
 
     const result = await pool.query(
       `INSERT INTO tasks (name, description, task_list_id, project_id, requester_id, 
