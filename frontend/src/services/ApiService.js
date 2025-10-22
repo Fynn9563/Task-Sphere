@@ -4,10 +4,12 @@ import { validateEmail, sanitizeInput, validateName, validateDescription } from 
 
 // API Service with refresh token support
 export class ApiService {
-  constructor() {
+  constructor(onAuthError = null) {
     this.baseURL = `${API_BASE_URL}/api`;
     this.token = localStorage.getItem('token');
     this.refreshToken = localStorage.getItem('refreshToken');
+    this.onAuthError = onAuthError; // Callback for auth errors
+    this.abortController = null; // For cancelling pending requests
   }
 
   setTokens(token, refreshToken) {
@@ -37,22 +39,43 @@ export class ApiService {
         this.setTokens(data.token, data.refreshToken);
         return data.token;
       }
-      
+
       throw new Error('Refresh failed');
     } catch (error) {
-      this.removeTokens();
-      window.location.reload();
+      // Call auth error callback to trigger logout
+      this.handleAuthError('expired');
       throw error;
+    }
+  }
+
+  handleAuthError(reason = 'invalid') {
+    // Cancel any pending requests
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+
+    // Clear tokens
+    this.removeTokens();
+
+    // Trigger logout callback if provided
+    if (this.onAuthError) {
+      this.onAuthError(reason);
     }
   }
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+
+    // Create new AbortController for this request
+    this.abortController = new AbortController();
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
         ...(this.token && { Authorization: `Bearer ${this.token}` }),
       },
+      signal: this.abortController.signal,
       ...options,
     };
 
@@ -62,17 +85,31 @@ export class ApiService {
 
     try {
       let response = await fetch(url, config);
-      
+
+      // Handle 401 - No token or invalid auth
+      if (response.status === 401) {
+        this.handleAuthError('unauthorized');
+        throw new Error('Authentication required');
+      }
+
+      // Handle 403 - Token expired or invalid
       if (response.status === 403) {
         const data = await response.json();
+
+        // Try to refresh if token expired
         if (data.needsRefresh && this.refreshToken) {
           await this.refreshAccessToken();
           config.headers.Authorization = `Bearer ${this.token}`;
+          // Retry the original request with new token
           response = await fetch(url, config);
+        } else {
+          // Invalid token, not just expired
+          this.handleAuthError('forbidden');
+          throw new Error(data.error || 'Access forbidden');
         }
       }
 
-      // Handle error responses
+      // Handle other error responses
       if (!response.ok) {
         let errorData;
         try {
@@ -88,8 +125,14 @@ export class ApiService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      // Don't log aborted requests
+      if (error.name !== 'AbortError') {
+        console.error('API Error:', error);
+      }
       throw error;
+    } finally {
+      // Clear abort controller after request completes
+      this.abortController = null;
     }
   }
 

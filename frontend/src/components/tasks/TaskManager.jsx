@@ -29,8 +29,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const [error, setError] = useState('');
   const [activeView, setActiveView] = useState('tasks'); // 'tasks' or 'queue'
 
-  const { logout, user } = useAuth();
-  const api = new ApiService();
+  const { logout, user, api } = useAuth();
   const ws = new WebSocketService();
 
   useEffect(() => {

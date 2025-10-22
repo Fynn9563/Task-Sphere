@@ -95,8 +95,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
   const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [operationLoading, setOperationLoading] = useState(false);
-  const { user } = useAuth();
-  const api = useMemo(() => new ApiService(), []);
+  const { user, api } = useAuth();
 
   const sensors = useSensors(
     useSensor(PointerSensor),

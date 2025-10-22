@@ -10,8 +10,7 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
-  const api = new ApiService();
+  const { user, api } = useAuth();
   const ws = new WebSocketService();
 
   // Load notifications when user changes

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Plus, Loader, AlertCircle, Trash2, X } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
-import { ApiService } from '../../services/ApiService';
+import { useAuth } from '../../hooks/useAuth';
 
 // Convert HH:MM format to decimal hours
 const timeStringToHours = (timeString) => {
@@ -38,7 +38,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
   const [newProject, setNewProject] = useState('');
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [showRequesterManager, setShowRequesterManager] = useState(false);
-  const api = new ApiService();
+  const { api } = useAuth();
 
   const resetForm = () => {
     setNewTask({

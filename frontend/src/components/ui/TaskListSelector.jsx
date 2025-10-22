@@ -21,8 +21,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
   const [newListDescription, setNewListDescription] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
-  const { logout, user } = useAuth();
-  const api = new ApiService();
+  const { logout, user, api } = useAuth();
 
   const handleNavigateToTask = (taskListId, taskId) => {
     // Find the task list and select it, then pass the task ID for highlighting
@@ -37,7 +36,25 @@ const TaskListSelector = ({ onSelectTaskList }) => {
     console.log('Current user in TaskListSelector:', user);
   }, []);
 
+  // Auto-select task list if session was restored
+  useEffect(() => {
+    const autoSelectId = sessionStorage.getItem('autoSelectTaskListId');
+    if (autoSelectId && taskLists.length > 0) {
+      const taskList = taskLists.find(list => list.id === parseInt(autoSelectId));
+      if (taskList) {
+        console.log('Auto-selecting restored task list:', taskList);
+        sessionStorage.removeItem('autoSelectTaskListId');
+        // Small delay to ensure proper initialization
+        setTimeout(() => {
+          onSelectTaskList(taskList);
+        }, 100);
+      }
+    }
+  }, [taskLists, onSelectTaskList]);
+
   const loadTaskLists = async () => {
+    if (!api) return;
+
     try {
       setLoading(true);
       setError(''); // Clear any previous errors

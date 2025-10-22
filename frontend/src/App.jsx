@@ -21,7 +21,15 @@ const TaskSphere = () => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [selectedTaskList, setSelectedTaskList] = useState(null);
   const [initialTaskId, setInitialTaskId] = useState(null);
-  const { user, loading } = useAuth();
+  const { user, loading, saveSessionState, restoreSessionState } = useAuth();
+
+  // Save session state when user logs out due to auth error
+  useEffect(() => {
+    if (!user && selectedTaskList) {
+      // Save current state before clearing
+      saveSessionState(selectedTaskList, initialTaskId);
+    }
+  }, [user, selectedTaskList, initialTaskId, saveSessionState]);
 
   // Reset selected task list when user changes or logs out
   useEffect(() => {
@@ -31,6 +39,21 @@ const TaskSphere = () => {
       setIsLoginMode(true); // Always go to login mode when logged out
     }
   }, [user]);
+
+  // Restore session after successful login
+  useEffect(() => {
+    if (user && !selectedTaskList) {
+      const savedSession = restoreSessionState();
+      if (savedSession) {
+        console.log('Restoring session:', savedSession);
+        // We'll need to fetch the task list by ID
+        // This will be handled in TaskListSelector via a prop
+        setInitialTaskId(savedSession.taskId);
+        // Store the ID so TaskListSelector can auto-select it
+        sessionStorage.setItem('autoSelectTaskListId', savedSession.taskListId);
+      }
+    }
+  }, [user, selectedTaskList, restoreSessionState]);
 
   const handleSelectTaskList = (taskList, taskId = null) => {
     setSelectedTaskList(taskList);
