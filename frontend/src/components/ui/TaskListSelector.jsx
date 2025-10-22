@@ -33,6 +33,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
   useEffect(() => {
     loadTaskLists();
     console.log('Current user in TaskListSelector:', user);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-select task list if session was restored

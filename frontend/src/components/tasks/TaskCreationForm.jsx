@@ -1,6 +1,6 @@
 // components/tasks/TaskCreationForm.jsx
 import React, { useState } from 'react';
-import { Plus, Loader, AlertCircle, Trash2, X } from 'lucide-react';
+import { Plus, Loader, AlertCircle, Trash2 } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 import { useAuth } from '../../hooks/useAuth';
 

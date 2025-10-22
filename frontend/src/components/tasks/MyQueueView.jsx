@@ -1,5 +1,5 @@
 // components/tasks/MyQueueView.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ListOrdered, Plus, Loader, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import TaskCard from './TaskCard';
@@ -105,6 +105,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
 
   useEffect(() => {
     loadQueue();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskList.id]); // Reload queue when task list changes
 
   // Refresh queue when tasks are updated or deleted (via props)
@@ -155,6 +156,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
         setQueue(updatedQueue);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]); // Watch the entire tasks array, not just length
 
   const loadQueue = async () => {

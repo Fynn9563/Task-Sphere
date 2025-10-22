@@ -96,7 +96,7 @@ export const validateName = (name) => {
   
   // Allow letters, numbers, spaces, and common punctuation
   // But prevent HTML/XML-like tags
-  const validPattern = /^[a-zA-Z0-9\s\-_.,!?@#$%^&*()+='":;/\\|`~\[\]{}]+$/;
+  const validPattern = /^[a-zA-Z0-9\s\-_.,!?@#$%^&*()+='":;/\\|`~[\]{}]+$/;
   const noHtmlTags = !/<[^>]*>/g.test(trimmed);
   
   return validPattern.test(trimmed) && noHtmlTags;

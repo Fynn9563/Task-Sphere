@@ -1,6 +1,6 @@
 // components/tasks/TaskManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Share2, Trash2, LogOut, Loader, Filter, ListChecks, ListOrdered } from 'lucide-react';
+import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { WebSocketService } from '../../services/WebSocketService';
 import DarkModeToggle from '../ui/DarkModeToggle';
@@ -70,6 +70,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       ws.leaveTaskList(taskList.id);
       ws.disconnect();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskList.id]);
 
   // Highlight initial task if provided

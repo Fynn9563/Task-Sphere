@@ -114,7 +114,7 @@ export class ApiService {
         let errorData;
         try {
           errorData = await response.json();
-        } catch (e) {
+        } catch {
           // If JSON parsing fails, use status text
           throw new Error(response.statusText || 'Something went wrong');
         }

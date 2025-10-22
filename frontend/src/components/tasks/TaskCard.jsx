@@ -60,7 +60,6 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
     estimated_hours: hoursToTimeString(task.estimated_hours)
   });
   const [editErrors, setEditErrors] = useState({});
-  const { user } = useAuth();
 
   // Update editData when task changes (for real-time updates)
   useEffect(() => {

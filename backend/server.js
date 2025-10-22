@@ -113,17 +113,6 @@ app.use(httpLoggerMiddleware);
 // Serve security.txt
 app.use(express.static('public'));
 
-// Input validation middleware
-const validateInput = (schema) => {
-  return (req, res, next) => {
-    const { error } = schema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-    next();
-  };
-};
-
 // Sanitization helper (uses safe validator wrapper)
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
@@ -610,11 +599,11 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
     logger.debug('Task list created', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
     // Add owner as member
-    const memberResult = await pool.query(
+    await pool.query(
       'INSERT INTO task_list_members (task_list_id, user_id, role) VALUES ($1, $2, $3) RETURNING *',
       [taskListId, req.user.userId, 'owner']
     );
-    
+
     logger.debug('Member added to task list', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
     // Return enriched data with same format as getTaskLists
