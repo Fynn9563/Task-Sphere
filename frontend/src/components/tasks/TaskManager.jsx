@@ -264,6 +264,27 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
     ));
   };
 
+  // Update queue positions after reorder (called by MyQueueView after drag/drop)
+  const updateQueuePositionOnReorder = (reorderedQueueData) => {
+    console.log('updateQueuePositionOnReorder called:', { reorderedQueueData });
+
+    setTasks(prevTasks => {
+      const updatedTasks = prevTasks.map(task => {
+        // Update positions for all queue tasks
+        const queueTask = reorderedQueueData.find(qt => qt.id === task.id);
+        if (queueTask) {
+          console.log(`Updating task ${task.id} queue position to ${queueTask.queue_position}`);
+          return { ...task, queue_position: queueTask.queue_position };
+        }
+
+        return task;
+      });
+
+      console.log('Updated tasks after reorder:', updatedTasks);
+      return updatedTasks;
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
@@ -597,6 +618,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             onTaskUpdate={updateTask}
             onAddToQueue={updateQueuePositionOnAdd}
             onRemoveFromQueue={updateQueuePositionOnRemove}
+            onReorderQueue={updateQueuePositionOnReorder}
           />
         )}
       </div>

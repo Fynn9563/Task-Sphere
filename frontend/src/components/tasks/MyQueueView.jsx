@@ -89,7 +89,7 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
 };
 
 // Main Queue View Component
-const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onAddToQueue, onRemoveFromQueue }) => {
+const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onAddToQueue, onRemoveFromQueue, onReorderQueue }) => {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -184,17 +184,29 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     const newIndex = queue.findIndex((task) => task.id.toString() === over.id);
 
     const newQueue = arrayMove(queue, oldIndex, newIndex);
-    setQueue(newQueue);
+
+    // Update queue_position property for each task in the reordered queue
+    const newQueueWithPositions = newQueue.map((task, index) => ({
+      ...task,
+      queue_position: index + 1,
+    }));
+
+    setQueue(newQueueWithPositions);
 
     try {
       // Update positions on the server
-      const taskOrders = newQueue.map((task, index) => ({
+      const taskOrders = newQueueWithPositions.map((task, index) => ({
         taskId: task.id,
         position: index + 1,
       }));
 
       await api.reorderQueue(user.id, taskOrders);
       setError(''); // Clear any previous errors
+
+      // Notify parent to update queue positions in tasks state
+      if (onReorderQueue) {
+        onReorderQueue(newQueueWithPositions);
+      }
     } catch (err) {
       console.error('Failed to reorder queue:', err);
       setError(err.message || 'Failed to save new order');
@@ -339,7 +351,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
               <div className="space-y-3">
                 {queue.map((task, index) => (
                   <SortableTaskItem
-                    key={`${task.id}-${index}`}
+                    key={`${task.id}-${task.queue_position || index}`}
                     task={task}
                     index={index}
                     onRemove={handleRemoveFromQueue}
