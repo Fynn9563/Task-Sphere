@@ -55,29 +55,30 @@ export const cleanDisplayText = (text) => {
   return decodeHtmlEntities(text);
 };
 
-// Enhanced input sanitization - now focuses on security without encoding display text
+// Enhanced input sanitization - properly escapes HTML to prevent XSS
 export const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
-  
+
   // Trim whitespace
   let sanitized = input.trim();
-  
-  // Remove script tags and other potentially dangerous HTML
-  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  sanitized = sanitized.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
-  sanitized = sanitized.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
-  sanitized = sanitized.replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '');
-  sanitized = sanitized.replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '');
-  
-  // Remove javascript: links and event handlers
-  sanitized = sanitized.replace(/javascript:/gi, '');
-  sanitized = sanitized.replace(/on\w+\s*=/gi, '');
-  
+
+  // Escape HTML special characters to prevent XSS
+  const htmlEscapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#x27;',
+    '/': '&#x2F;'
+  };
+
+  sanitized = sanitized.replace(/[&<>"'/]/g, (char) => htmlEscapeMap[char]);
+
   // Limit length to prevent extremely long inputs
   if (sanitized.length > 500) {
     sanitized = sanitized.substring(0, 500);
   }
-  
+
   return sanitized;
 };
 

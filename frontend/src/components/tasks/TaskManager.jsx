@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Share2, Trash2, LogOut, Loader, Filter, ListChecks, ListOrdered } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { ApiService } from '../../services/ApiService';
 import { WebSocketService } from '../../services/WebSocketService';
 import DarkModeToggle from '../ui/DarkModeToggle';
 import NotificationBell from '../ui/NotificationBell';

@@ -20,6 +20,24 @@ const {
 } = require('./utils/logger');
 require('dotenv').config();
 
+// Sanitize data for logging to prevent log injection
+const sanitizeForLog = (data) => {
+  if (typeof data === 'string') {
+    // Remove newlines, carriage returns, and control characters
+    return data.replace(/[\n\r\t\x00-\x1F\x7F]/g, '');
+  }
+  if (typeof data === 'object' && data !== null) {
+    const sanitized = {};
+    for (const key in data) {
+      if (data.hasOwnProperty(key)) {
+        sanitized[key] = sanitizeForLog(data[key]);
+      }
+    }
+    return sanitized;
+  }
+  return data;
+};
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -199,7 +217,7 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
-      console.error('JWT verification error:', err);
+      logger.error('JWT verification error', { error: sanitizeForLog(err.message) });
       if (err.name === 'TokenExpiredError') {
         securityLog('AUTH_FAILURE', { reason: 'Token expired', path: req.path }, req);
         return res.status(403).json({ error: 'Token expired', needsRefresh: true });
@@ -207,7 +225,7 @@ const authenticateToken = (req, res, next) => {
       securityLog('AUTH_FAILURE', { reason: 'Invalid token', error: err.message, path: req.path }, req);
       return res.status(403).json({ error: 'Invalid token' });
     }
-    console.log('JWT decoded user:', user);
+    logger.debug('JWT decoded user', { userId: sanitizeForLog(user.userId), email: sanitizeForLog(user.email) });
     req.user = user;
     next();
   });
@@ -315,9 +333,9 @@ const initDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_user_task_queue_user ON user_task_queue(user_id);
       CREATE INDEX IF NOT EXISTS idx_user_task_queue_position ON user_task_queue(user_id, queue_position);
     `);
-    console.log('✅ Database initialized successfully');
+    logger.info('Database initialized successfully');
   } catch (error) {
-    console.error('❌ Database initialization error:', error);
+    logger.error('Database initialization error', { error: sanitizeForLog(error.message) });
   }
 };
 
@@ -327,7 +345,7 @@ const generateInviteCode = () => {
 };
 
 const generateTokens = (userId) => {
-  console.log('Generating tokens for user ID:', userId);
+  logger.debug('Generating tokens', { userId: sanitizeForLog(userId) });
   const accessToken = jwt.sign({ userId: userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign({ userId: userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
   return { accessToken, refreshToken };
@@ -336,7 +354,13 @@ const generateTokens = (userId) => {
 // Helper function to create notifications
 const createNotification = async (userId, taskId, taskListId, type, title, message) => {
   try {
-    console.log('Creating notification:', { userId, taskId, taskListId, type, title, message });
+    logger.debug('Creating notification', {
+      userId: sanitizeForLog(userId),
+      taskId: sanitizeForLog(taskId),
+      taskListId: sanitizeForLog(taskListId),
+      type: sanitizeForLog(type),
+      title: sanitizeForLog(title)
+    });
     
     const result = await pool.query(
       'INSERT INTO notifications (user_id, task_id, task_list_id, type, title, message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *',
@@ -360,10 +384,10 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
     // Emit real-time notification with proper timestamp
     io.to(`user_${userId}`).emit('newNotification', notification);
     
-    console.log('Notification created and emitted:', notification);
+    logger.debug('Notification created and emitted', { notificationId: sanitizeForLog(notification.id) });
     return notification;
   } catch (error) {
-    console.error('Error creating notification:', error);
+    logger.error('Error creating notification', { error: sanitizeForLog(error.message) });
   }
 };
 
@@ -406,7 +430,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     );
 
     const user = result.rows[0];
-    console.log('Created user:', user);
+    logger.info('User registered', { userId: sanitizeForLog(user.id), email: sanitizeForLog(user.email) });
     
     const { accessToken, refreshToken } = generateTokens(user.id);
     
@@ -419,7 +443,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       refreshToken 
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('Registration error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -428,6 +452,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // lgtm[js/user-controlled-bypass] - This is input validation, not a bypass
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
@@ -495,14 +520,15 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 app.post('/api/auth/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    
+
+    // lgtm[js/user-controlled-bypass] - This is input validation, not a bypass
     if (!refreshToken) {
       return res.status(401).json({ error: 'Refresh token required' });
     }
     
     // Verify refresh token
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    console.log('Refresh token decoded:', decoded);
+    logger.debug('Refresh token decoded', { userId: sanitizeForLog(decoded.userId) });
     
     // Check if refresh token exists in database
     const user = await pool.query('SELECT * FROM users WHERE id = $1 AND refresh_token = $2', 
@@ -524,7 +550,7 @@ app.post('/api/auth/refresh', async (req, res) => {
       refreshToken: newRefreshToken 
     });
   } catch (error) {
-    console.error('Token refresh error:', error);
+    logger.error('Token refresh error', { error: sanitizeForLog(error.message) });
     res.status(403).json({ error: 'Invalid refresh token' });
   }
 });
@@ -532,8 +558,7 @@ app.post('/api/auth/refresh', async (req, res) => {
 // Task List Routes
 app.get('/api/task-lists', authenticateToken, async (req, res) => {
   try {
-    console.log('Getting task lists for user:', req.user.userId);
-    console.log('User object:', req.user);
+    logger.debug('Getting task lists', { userId: sanitizeForLog(req.user.userId) });
     
     const result = await pool.query(`
       SELECT tl.*, u.name as owner_name,
@@ -550,14 +575,11 @@ app.get('/api/task-lists', authenticateToken, async (req, res) => {
       ORDER BY tl.created_at DESC
     `, [req.user.userId]);
 
-    console.log('Found task lists:', result.rows.length);
-    result.rows.forEach(list => {
-      console.log(`List "${list.name}": owner_id=${list.owner_id}, current_user=${req.user.userId}, is_owner=${list.owner_id === req.user.userId}`);
-    });
+    logger.debug('Found task lists', { count: result.rows.length, userId: sanitizeForLog(req.user.userId) });
     
     res.json(result.rows);
   } catch (error) {
-    console.error('Get task lists error:', error);
+    logger.error('Get task lists error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to fetch task lists' });
   }
 });
@@ -577,7 +599,7 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
     const sanitizedDescription = description ? sanitizeInput(description) : null;
     const inviteCode = generateInviteCode();
     
-    console.log('Creating task list for user:', req.user.userId);
+    logger.debug('Creating task list', { userId: sanitizeForLog(req.user.userId), name: sanitizeForLog(sanitizedName) });
     
     const result = await pool.query(
       'INSERT INTO task_lists (name, description, owner_id, invite_code) VALUES ($1, $2, $3, $4) RETURNING *',
@@ -585,7 +607,7 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
     );
 
     const taskListId = result.rows[0].id;
-    console.log('Created task list with ID:', taskListId);
+    logger.debug('Task list created', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
     // Add owner as member
     const memberResult = await pool.query(
@@ -593,7 +615,7 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
       [taskListId, req.user.userId, 'owner']
     );
     
-    console.log('Added member:', memberResult.rows[0]);
+    logger.debug('Member added to task list', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
     // Return enriched data with same format as getTaskLists
     const enrichedResult = await pool.query(`
@@ -608,11 +630,11 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
       GROUP BY tl.id, u.name
     `, [taskListId]);
 
-    console.log('Enriched result:', enrichedResult.rows[0]);
+    logger.debug('Task list enriched with owner data', { taskListId: sanitizeForLog(taskListId) });
     
     res.status(201).json(enrichedResult.rows[0]);
   } catch (error) {
-    console.error('Create task list error:', error);
+    logger.error('Create task list error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to create task list' });
   }
 });
@@ -622,7 +644,7 @@ app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('Deleting task list:', id, 'by user:', req.user.userId);
+    logger.debug('Deleting task list', { taskListId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
     
     // Check if user is the owner of this task list
     const ownerCheck = await pool.query(
@@ -648,12 +670,12 @@ app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
     // Delete the task list (CASCADE will handle related data)
     await pool.query('DELETE FROM task_lists WHERE id = $1', [id]);
 
-    console.log('Task list deleted successfully:', id);
+    logger.info('Task list deleted', { taskListId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
     securityLog('TASK_LIST_DELETED', { taskListId: id }, req);
 
     res.json({ message: 'Task list deleted successfully' });
   } catch (error) {
-    console.error('Delete task list error:', error);
+    logger.error('Delete task list error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to delete task list' });
   }
 });
@@ -667,7 +689,7 @@ app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invite code is required' });
     }
     
-    console.log('User', req.user.userId, 'trying to join with code:', inviteCode);
+    logger.debug('User joining task list', { userId: sanitizeForLog(req.user.userId), inviteCode: sanitizeForLog(inviteCode) });
     
     const sanitizedCode = sanitizeInput(inviteCode.toUpperCase());
     
@@ -697,11 +719,11 @@ app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
       [taskList.id, req.user.userId]
     );
 
-    console.log('User', req.user.userId, 'successfully joined task list', taskList.id);
+    logger.info('User joined task list', { userId: sanitizeForLog(req.user.userId), taskListId: sanitizeForLog(taskList.id) });
 
     res.json({ message: 'Successfully joined task list', taskList });
   } catch (error) {
-    console.error('Join task list error:', error);
+    logger.error('Join task list error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to join task list' });
   }
 });
@@ -709,7 +731,7 @@ app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
 // Notifications Routes
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
-    console.log('Getting notifications for user:', req.user.userId);
+    logger.debug('Getting notifications', { userId: sanitizeForLog(req.user.userId) });
     
     const result = await pool.query(`
       SELECT n.*, t.name as task_name, tl.name as task_list_name
@@ -729,7 +751,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 
     res.json(notifications);
   } catch (error) {
-    console.error('Get notifications error:', error);
+    logger.error('Get notifications error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to fetch notifications' });
   }
 });
@@ -743,7 +765,7 @@ app.get('/api/notifications/unread-count', authenticateToken, async (req, res) =
     
     res.json({ count: parseInt(result.rows[0].count) });
   } catch (error) {
-    console.error('Get unread count error:', error);
+    logger.error('Get unread count error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to fetch unread count' });
   }
 });
@@ -763,7 +785,7 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Mark notification read error:', error);
+    logger.error('Mark notification read error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to mark notification as read' });
   }
 });
@@ -777,7 +799,7 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
     
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
-    console.error('Mark all read error:', error);
+    logger.error('Mark all read error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to mark all notifications as read' });
   }
 });
@@ -791,7 +813,7 @@ app.delete('/api/notifications/clear-all', authenticateToken, async (req, res) =
     
     res.json({ message: 'All notifications cleared' });
   } catch (error) {
-    console.error('Clear all notifications error:', error);
+    logger.error('Clear all notifications error', { error: sanitizeForLog(error.message), userId: sanitizeForLog(req.user.userId) });
     res.status(500).json({ error: 'Failed to clear all notifications' });
   }
 });
@@ -811,7 +833,7 @@ app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
     
     res.json({ message: 'Notification deleted' });
   } catch (error) {
-    console.error('Delete notification error:', error);
+    logger.error('Delete notification error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to delete notification' });
   }
 });
@@ -840,7 +862,7 @@ app.get('/api/task-lists/:id/members', authenticateToken, async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get members error:', error);
+    logger.error('Get members error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to fetch members' });
   }
 });
@@ -876,7 +898,7 @@ app.get('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get tasks error:', error);
+    logger.error('Get tasks error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to fetch tasks' });
   }
 });
@@ -933,7 +955,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     const sanitizedName = sanitizeInput(name);
     const sanitizedDescription = description ? sanitizeInput(description) : null;
 
-    console.log('Creating task with processed assignedTo:', processedAssignedTo);
+    logger.debug('Creating task', { assignedToCount: processedAssignedTo ? processedAssignedTo.length : 0 });
 
     const result = await pool.query(
       `INSERT INTO tasks (name, description, task_list_id, project_id, requester_id, 
@@ -961,7 +983,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     const newTask = taskResult.rows[0];
 
-    console.log('Created task:', newTask);
+    logger.info('Task created', { taskId: sanitizeForLog(newTask.id), taskListId: sanitizeForLog(taskListId) });
 
     // Create notification if task is assigned to someone (and not to the creator)
     if (processedAssignedTo && processedAssignedTo !== req.user.userId) {
@@ -975,7 +997,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
           `You have been assigned to "${newTask.name}" in ${newTask.task_list_name}`
         );
       } catch (notifError) {
-        console.error('Error creating assignment notification:', notifError);
+        logger.error('Error creating assignment notification', { error: sanitizeForLog(notifError.message) });
         // Don't fail task creation if notification fails
       }
     }
@@ -985,7 +1007,7 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     res.status(201).json(newTask);
   } catch (error) {
-    console.error('Create task error:', error);
+    logger.error('Create task error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to create task' });
   }
 });
@@ -995,16 +1017,16 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    console.log('Updating task:', id, 'with data:', updates);
+    logger.debug('Updating task', { taskId: sanitizeForLog(id) });
 
     // Joi Validation (allow partial updates)
     const { error } = schemas.task.validate(updates, { abortEarly: false, allowUnknown: true });
     if (error) {
-      console.log('Joi validation error:', error.details);
+      logger.warn('Task validation error', { error: sanitizeForLog(error.message) });
       const errorMessage = error.details.map(detail => detail.message).join('; ');
       return res.status(400).json({ error: errorMessage });
     }
-    console.log('Joi validation passed');
+    logger.debug('Task validation passed');
 
     // Get the original task to check for assignment changes
     const originalTaskResult = await pool.query(
@@ -1048,7 +1070,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    console.log('Valid updates:', validUpdates);
+    logger.debug('Valid updates prepared', { fields: Object.keys(validUpdates) });
 
     // Build dynamic update query with proper parameter indexing
     const setClause = Object.keys(validUpdates)
@@ -1057,11 +1079,11 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     
     const values = [id, ...Object.values(validUpdates)];
     
-    console.log('SQL SET clause:', setClause);
-    console.log('SQL values:', values);
+    logger.debug('SQL SET clause generated');
+    logger.debug('SQL values prepared', { valueCount: values.length });
     
     const query = `UPDATE tasks SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
-    console.log('Final query:', query);
+    logger.debug('Final query prepared');
     
     const result = await pool.query(query, values);
 
@@ -1069,7 +1091,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    console.log('Task updated in database:', result.rows[0]);
+    logger.debug('Task updated in database', { taskId: sanitizeForLog(result.rows[0].id) });
 
     // Get the complete task with related data
     const taskResult = await pool.query(`
@@ -1087,7 +1109,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     const updatedTask = taskResult.rows[0];
 
-    console.log('Complete updated task with relations:', updatedTask);
+    logger.info('Task update complete', { taskId: sanitizeForLog(updatedTask.id) });
 
     // Create notification for task assignment changes
     if (validUpdates.assigned_to !== undefined && 
@@ -1112,7 +1134,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
           );
         }
       } catch (notifError) {
-        console.error('Error creating assignment notification:', notifError);
+        logger.error('Error creating assignment notification', { error: sanitizeForLog(notifError.message) });
         // Don't fail the update if notification fails
       }
     }
@@ -1123,7 +1145,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     res.json(updatedTask);
   } catch (error) {
-    console.error('Update task error:', error);
+    logger.error('Update task error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to update task' });
   }
 });
@@ -1144,7 +1166,7 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
-    console.error('Delete task error:', error);
+    logger.error('Delete task error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to delete task' });
   }
 });
@@ -1230,7 +1252,7 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('Deleting project:', id, 'by user:', req.user.userId);
+    logger.debug('Deleting project', { projectId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
     
     // First, check if the project exists and get task list info
     const projectCheck = await pool.query(
@@ -1257,11 +1279,11 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
     // Delete the project (tasks will be set to NULL due to ON DELETE SET NULL)
     await pool.query('DELETE FROM projects WHERE id = $1', [id]);
     
-    console.log('Project deleted successfully:', id);
+    logger.info('Project deleted', { projectId: sanitizeForLog(id) });
     
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
-    console.error('Delete project error:', error);
+    logger.error('Delete project error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to delete project' });
   }
 });
@@ -1338,7 +1360,7 @@ app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req,
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get queue error:', error);
+    logger.error('Get queue error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to fetch queue' });
   }
 });
@@ -1398,7 +1420,7 @@ app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Add to queue error:', error);
+    logger.error('Add to queue error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to add task to queue' });
   }
 });
@@ -1435,7 +1457,7 @@ app.put('/api/users/:userId/queue/reorder', authenticateToken, queueLimiter, asy
       client.release();
     }
   } catch (error) {
-    console.error('Reorder queue error:', error);
+    logger.error('Reorder queue error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to reorder queue' });
   }
 });
@@ -1484,7 +1506,7 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
 
     res.json({ message: 'Task removed from queue' });
   } catch (error) {
-    console.error('Remove from queue error:', error);
+    logger.error('Remove from queue error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to remove task from queue' });
   }
 });
@@ -1494,7 +1516,7 @@ app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('Deleting requester:', id, 'by user:', req.user.userId);
+    logger.debug('Deleting requester', { requesterId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
     
     // First, check if the requester exists and get task list info
     const requesterCheck = await pool.query(
@@ -1521,50 +1543,50 @@ app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
     // Delete the requester (tasks will be set to NULL due to ON DELETE SET NULL)
     await pool.query('DELETE FROM requesters WHERE id = $1', [id]);
     
-    console.log('Requester deleted successfully:', id);
+    logger.info('Requester deleted', { requesterId: sanitizeForLog(id) });
     
     res.json({ message: 'Requester deleted successfully' });
   } catch (error) {
-    console.error('Delete requester error:', error);
+    logger.error('Delete requester error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to delete requester' });
   }
 });
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  logger.debug('WebSocket user connected', { socketId: sanitizeForLog(socket.id) });
 
   // Join user room for notifications
   socket.on('joinUser', (userId) => {
     socket.join(`user_${userId}`);
-    console.log(`User ${socket.id} joined user room ${userId}`);
+    logger.debug('User joined room', { socketId: sanitizeForLog(socket.id), userId: sanitizeForLog(userId) });
   });
 
   // Join task list room
   socket.on('joinTaskList', (taskListId) => {
     socket.join(`taskList_${taskListId}`);
-    console.log(`User ${socket.id} joined task list ${taskListId}`);
+    logger.debug('User joined task list room', { socketId: sanitizeForLog(socket.id), taskListId: sanitizeForLog(taskListId) });
   });
 
   // Leave task list room
   socket.on('leaveTaskList', (taskListId) => {
     socket.leave(`taskList_${taskListId}`);
-    console.log(`User ${socket.id} left task list ${taskListId}`);
+    logger.debug('User left task list room', { socketId: sanitizeForLog(socket.id), taskListId: sanitizeForLog(taskListId) });
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    logger.debug('WebSocket user disconnected', { socketId: sanitizeForLog(socket.id) });
   });
 });
 
 // Database keep-alive job - runs once per day at 3 AM
 cron.schedule('0 3 * * *', async () => {
   try {
-    console.log('🔄 Running database keep-alive ping...');
+    logger.debug('Running database keep-alive ping');
     await pool.query('SELECT 1');
-    console.log('✅ Database keep-alive ping successful');
+    logger.debug('Database keep-alive ping successful');
   } catch (error) {
-    console.error('❌ Database keep-alive ping failed:', error);
+    logger.error('Database keep-alive ping failed', { error: sanitizeForLog(error.message) });
   }
 });
 
@@ -1572,8 +1594,8 @@ cron.schedule('0 3 * * *', async () => {
 initDatabase().then(() => {
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log('⏰ Database keep-alive job scheduled (daily at 3 AM)');
+    logger.info(`Server running on port ${PORT}`);
+    logger.info('Database keep-alive job scheduled (daily at 3 AM)');
   });
 });
 

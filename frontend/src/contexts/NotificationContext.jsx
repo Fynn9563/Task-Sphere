@@ -1,7 +1,6 @@
 // contexts/NotificationContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { ApiService } from '../services/ApiService';
 import { WebSocketService } from '../services/WebSocketService';
 
 const NotificationContext = createContext();

@@ -45,19 +45,12 @@ const isUUID = (str) => {
   return validator.isUUID(str);
 };
 
-/**
- * UNSAFE: DO NOT USE - Known vulnerability (GHSA-9965-vmph-33xx)
- * Use a different URL validation library if needed
- * @deprecated
- */
-const isURL = () => {
-  throw new Error('validator.isURL() has a known vulnerability. Use an alternative URL validation method.');
-};
+// NOTE: validator.isURL() has a known vulnerability (GHSA-9965-vmph-33xx)
+// and is NOT included in this wrapper. Use an alternative URL validation method if needed.
 
 module.exports = {
   escape,
   isEmail,
   isAlphanumeric,
   isUUID,
-  // Explicitly do NOT export isURL to prevent accidental use
 };

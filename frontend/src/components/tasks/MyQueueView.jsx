@@ -1,7 +1,6 @@
 // components/tasks/MyQueueView.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { ListOrdered, Plus, Loader, X } from 'lucide-react';
-import { ApiService } from '../../services/ApiService';
 import { useAuth } from '../../hooks/useAuth';
 import TaskCard from './TaskCard';
 import {
