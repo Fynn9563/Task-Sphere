@@ -1,0 +1,8 @@
+# Security contact
+Contact: mailto:security@example.com
+
+# Preferred language
+Preferred-Languages: en
+
+# Expiration date (1 year from now - update annually)
+Expires: 2026-10-22T00:00:00.000Z

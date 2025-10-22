@@ -7,9 +7,17 @@ const { Server } = require('socket.io');
 const http = require('http');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const validator = require('validator');
 const Joi = require('joi');
+const { escape: sanitizeString, isEmail: validateEmailFormat } = require('./utils/validation');
 const cron = require('node-cron');
+const {
+  logger,
+  requestIdMiddleware,
+  httpLoggerMiddleware,
+  securityLog,
+  trackFailedLogin,
+  resetFailedLoginAttempts
+} = require('./utils/logger');
 require('dotenv').config();
 
 const app = express();
@@ -75,6 +83,13 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Enhanced logging middleware
+app.use(requestIdMiddleware);
+app.use(httpLoggerMiddleware);
+
+// Serve security.txt
+app.use(express.static('public'));
+
 // Input validation middleware
 const validateInput = (schema) => {
   return (req, res, next) => {
@@ -86,20 +101,13 @@ const validateInput = (schema) => {
   };
 };
 
-// Sanitization helper
+// Sanitization helper (uses safe validator wrapper)
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
-  return validator.escape(input.trim());
+  return sanitizeString(input);
 };
 
-// Security logging utility
-const securityLog = (eventType, details, req = null) => {
-  const timestamp = new Date().toISOString();
-  const ip = req ? (req.ip || req.connection.remoteAddress) : 'N/A';
-  const userId = req?.user?.userId || 'anonymous';
-
-  console.log(`[SECURITY] [${eventType}] [${timestamp}] [User: ${userId}] [IP: ${ip}] ${JSON.stringify(details)}`);
-};
+// Note: securityLog is now imported from utils/logger.js
 
 // Password validation helper
 const validatePassword = (password) => {
@@ -364,7 +372,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
     
-    if (!validator.isEmail(email)) {
+    if (!validateEmailFormat(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
@@ -421,15 +429,45 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const sanitizedEmail = sanitizeInput(email.toLowerCase());
 
+    // Check if account is locked due to failed attempts
+    const lockStatus = trackFailedLogin(sanitizedEmail);
+    if (lockStatus.locked) {
+      securityLog('LOGIN_BLOCKED', {
+        email: sanitizedEmail,
+        reason: 'Account temporarily locked',
+        remainingMinutes: lockStatus.remainingMinutes
+      }, req);
+      return res.status(429).json({ error: lockStatus.message });
+    }
+
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [sanitizedEmail]);
     const user = result.rows[0];
 
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
-      securityLog('LOGIN_FAILURE', { email: sanitizedEmail, reason: 'Invalid credentials' }, req);
-      return res.status(401).json({ error: 'Invalid credentials' });
+      // Track failed attempt
+      const failedStatus = trackFailedLogin(sanitizedEmail);
+
+      securityLog('LOGIN_FAILURE', {
+        email: sanitizedEmail,
+        reason: 'Invalid credentials',
+        attemptCount: failedStatus.attemptCount,
+        remainingAttempts: failedStatus.remainingAttempts
+      }, req);
+
+      if (failedStatus.locked) {
+        return res.status(429).json({ error: failedStatus.message });
+      }
+
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        remainingAttempts: failedStatus.remainingAttempts
+      });
     }
 
-    console.log('User logging in:', { id: user.id, email: user.email });
+    // Successful login - reset failed attempts
+    resetFailedLoginAttempts(sanitizedEmail);
+
+    logger.info('User Login Success', { userId: user.id, email: sanitizedEmail, requestId: req.id });
     securityLog('LOGIN_SUCCESS', { userId: user.id, email: sanitizedEmail }, req);
 
     const { accessToken, refreshToken } = generateTokens(user.id);
@@ -443,7 +481,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       refreshToken
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login Error', { error: error.message, stack: error.stack, requestId: req.id });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1167,7 +1205,7 @@ app.post('/api/task-lists/:id/requesters', authenticateToken, async (req, res) =
     const sanitizedName = sanitizeInput(name);
     const sanitizedEmail = email ? sanitizeInput(email) : null;
     
-    if (sanitizedEmail && !validator.isEmail(sanitizedEmail)) {
+    if (sanitizedEmail && !validateEmailFormat(sanitizedEmail)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
     
