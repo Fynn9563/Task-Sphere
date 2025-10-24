@@ -91,11 +91,17 @@ const queueLimiter = rateLimit({
 app.use('/api/', limiter);
 
 // Database connection with SSL
-// Supabase pooler mode requires rejectUnauthorized: false
-// The connection is still encrypted, but pooler uses self-signed certs not in system trust store
+// Requires SUPABASE_CA_CERT environment variable
+if (!process.env.SUPABASE_CA_CERT) {
+  throw new Error('SUPABASE_CA_CERT environment variable is required');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Required for Supabase pooler - connection is still encrypted
+  ssl: {
+    rejectUnauthorized: true,
+    ca: process.env.SUPABASE_CA_CERT
+  }
 });
 
 // Middleware
