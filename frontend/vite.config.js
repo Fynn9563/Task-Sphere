@@ -20,7 +20,7 @@ export default defineConfig({
           res.setHeader(
             'Content-Security-Policy',
             "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " + // Note: eval needed for dev mode
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " + // Note: eval needed for dev mode, cdnjs for socket.io
             "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data: https:; " +
             "font-src 'self' data:; " +
