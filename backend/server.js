@@ -64,16 +64,18 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Rate limiting
+// Rate limiting - relaxed in development, strict in production
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: isDevelopment ? 1000 : 100 // Much higher limit in development
 });
 
 // Stricter rate limiting for authentication endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  max: isDevelopment ? 50 : 5, // Relaxed in development
   message: { error: 'Too many authentication attempts, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -82,7 +84,7 @@ const authLimiter = rateLimit({
 // Rate limiting for queue operations
 const queueLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // limit each IP to 50 requests per windowMs
+  max: isDevelopment ? 500 : 50, // Relaxed in development
   message: { error: 'Too many queue operations, please try again later' }
 });
 
@@ -96,7 +98,9 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? {
     rejectUnauthorized: true,
     ca: process.env.SUPABASE_CA_CERT // Provide CA certificate from env
-  } : false
+  } : {
+    rejectUnauthorized: false // Allow SSL in development without strict cert validation
+  }
 });
 
 // Middleware

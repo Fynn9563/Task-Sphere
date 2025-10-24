@@ -21,7 +21,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 // Sortable Task Item Component
-const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, requesters }) => {
+const SortableTaskItem = ({ task, index, onRemove, onDelete, onUpdate, members, projects, requesters }) => {
   const {
     attributes,
     listeners,
@@ -68,10 +68,7 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
               // Reload queue after status change
               onUpdate(taskId, { status: !task.status });
             }}
-            onDelete={(taskId) => {
-              // Remove from queue when deleted
-              onRemove(taskId);
-            }}
+            onDelete={onDelete}
             onUpdate={onUpdate}
             onRemoveFromQueue={(taskId) => {
               console.log('TaskCard onRemoveFromQueue called, delegating to onRemove');
@@ -88,7 +85,7 @@ const SortableTaskItem = ({ task, index, onRemove, onUpdate, members, projects, 
 };
 
 // Main Queue View Component
-const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onAddToQueue, onRemoveFromQueue, onReorderQueue }) => {
+const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onTaskDelete, onAddToQueue, onRemoveFromQueue, onReorderQueue }) => {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -110,8 +107,13 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
 
   // Refresh queue when tasks are updated or deleted (via props)
   useEffect(() => {
-    // Only sync if we have queue items
-    if (queue.length === 0 || tasks.length === 0) {
+    // Skip sync if no tasks at all (initial state)
+    if (tasks.length === 0) {
+      return;
+    }
+
+    // Skip if queue hasn't loaded yet
+    if (queue.length === 0) {
       return;
     }
 
@@ -142,6 +144,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
 
     if (needsReload) {
       // Task was deleted - reload from server
+      console.log('Task deleted, reloading queue from server');
       loadQueue();
     } else {
       // Check if queue actually changed to prevent infinite loops
@@ -281,6 +284,35 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     }
   };
 
+  const handleDeleteTask = async (taskId) => {
+    console.log('handleDeleteTask called for task:', taskId);
+    if (operationLoading) {
+      console.log('Operation already in progress, returning early');
+      return; // Prevent double-clicks
+    }
+
+    try {
+      setOperationLoading(true);
+      setError('');
+
+      // Delete the task via parent callback
+      if (onTaskDelete) {
+        await onTaskDelete(taskId);
+      }
+
+      // Reload queue to reflect the deletion
+      console.log('Task deleted, reloading queue...');
+      const queueData = await api.getQueue(user.id, taskList.id);
+      console.log('Updated queue data after deletion:', queueData);
+      setQueue(queueData);
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+      setError(err.message || 'Failed to delete task');
+    } finally {
+      setOperationLoading(false);
+    }
+  };
+
   // Filter out tasks that are already in the queue
   const availableTasks = tasks.filter(
     task => !queue.some(queueTask => queueTask.id === task.id)
@@ -355,6 +387,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
                     task={task}
                     index={index}
                     onRemove={handleRemoveFromQueue}
+                    onDelete={handleDeleteTask}
                     onUpdate={onTaskUpdate}
                     members={members}
                     projects={projects}

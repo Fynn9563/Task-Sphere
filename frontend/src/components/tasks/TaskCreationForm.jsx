@@ -92,7 +92,10 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
       console.log('Creating task with data:', taskData);
 
       const createdTask = await api.createTask(taskList.id, taskData);
+      console.log('Task created successfully, received from API:', createdTask);
+      console.log('Calling onTaskCreated callback...');
       onTaskCreated(createdTask);
+      console.log('onTaskCreated callback completed');
       resetForm();
     } catch (err) {
       setError(err.message);

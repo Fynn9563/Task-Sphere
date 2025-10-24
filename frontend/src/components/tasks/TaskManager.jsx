@@ -29,7 +29,9 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const [activeView, setActiveView] = useState('tasks'); // 'tasks' or 'queue'
 
   const { logout, user, api } = useAuth();
-  const ws = new WebSocketService();
+
+  // Create WebSocket instance only once using useMemo
+  const ws = useMemo(() => new WebSocketService(), []);
 
   useEffect(() => {
     loadData();
@@ -40,11 +42,14 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
 
     // Set up real-time event listeners
     const handleTaskCreated = (task) => {
+      console.log('WebSocket taskCreated event received:', task);
       setTasks(prev => {
         // Prevent duplicates - check if task already exists
         if (prev.some(t => t.id === task.id)) {
+          console.log('Task already exists in state, skipping duplicate');
           return prev;
         }
+        console.log('Adding new task to state via WebSocket');
         return [task, ...prev];
       });
     };
@@ -349,12 +354,15 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
         <TaskCreationForm
           taskList={taskList}
           onTaskCreated={(createdTask) => {
+            console.log('TaskCreationForm onTaskCreated callback called with:', createdTask);
             // Immediately add the task to local state for instant UI update
             setTasks(prev => {
               // Prevent duplicates - check if task already exists
               if (prev.some(t => t.id === createdTask.id)) {
+                console.log('Task already exists in state, skipping duplicate from form callback');
                 return prev;
               }
+              console.log('Adding new task to state from form callback');
               return [createdTask, ...prev];
             });
           }}
@@ -624,6 +632,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             projects={projects}
             requesters={requesters}
             onTaskUpdate={updateTask}
+            onTaskDelete={deleteTask}
             onAddToQueue={updateQueuePositionOnAdd}
             onRemoveFromQueue={updateQueuePositionOnRemove}
             onReorderQueue={updateQueuePositionOnReorder}

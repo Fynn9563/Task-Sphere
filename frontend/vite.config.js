@@ -24,7 +24,7 @@ export default defineConfig({
             "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data: https:; " +
             "font-src 'self' data:; " +
-            "connect-src 'self' ws: wss:; " +
+            "connect-src 'self' http://localhost:5000 ws: wss:; " + // Allow backend API in dev
             "frame-ancestors 'none'; " +
             "base-uri 'self'; " +
             "form-action 'self';"
