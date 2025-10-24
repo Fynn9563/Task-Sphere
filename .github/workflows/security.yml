@@ -129,19 +129,15 @@ jobs:
   sast-scan:
     name: Static Application Security Testing
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/nodejs
-            p/javascript
-            p/react
+        run: semgrep ci --config "p/security-audit" --config "p/nodejs" --config "p/javascript" --config "p/react"
 
   container-scan:
     name: Container Security Scan
