@@ -348,7 +348,16 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
         {/* Task Creation Form */}
         <TaskCreationForm
           taskList={taskList}
-          onTaskCreated={() => {}} // WebSocket handles state update
+          onTaskCreated={(createdTask) => {
+            // Immediately add the task to local state for instant UI update
+            setTasks(prev => {
+              // Prevent duplicates - check if task already exists
+              if (prev.some(t => t.id === createdTask.id)) {
+                return prev;
+              }
+              return [createdTask, ...prev];
+            });
+          }}
           members={members}
           projects={projects}
           requesters={requesters}
