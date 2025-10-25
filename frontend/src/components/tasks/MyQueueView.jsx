@@ -261,12 +261,17 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
 
       // Remove from queue via API
       console.log('Calling API to remove from queue...');
-      await api.removeFromQueue(user.id, taskId);
+      const removeResponse = await api.removeFromQueue(user.id, taskId);
+      console.log('Remove response from backend:', removeResponse);
 
       // Reload queue to get updated positions
-      console.log('Reloading queue data...');
+      console.log('Reloading queue data for task list:', taskList.id);
       const queueData = await api.getQueue(user.id, taskList.id);
-      console.log('Updated queue data:', queueData);
+      console.log('Updated queue data from backend:', queueData);
+      console.log('Number of items in queue:', queueData.length);
+      queueData.forEach((task, idx) => {
+        console.log(`  Queue item ${idx}: Task ID ${task.id}, Position ${task.queue_position}, Name: ${task.name}`);
+      });
       setQueue(queueData);
 
       // Notify parent to update all queue positions

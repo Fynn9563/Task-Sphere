@@ -1150,15 +1150,54 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING task_list_id', [id]);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    // Emit real-time update
     const taskListId = result.rows[0].task_list_id;
+
+    // After deleting task (which cascades to user_task_queue),
+    // renumber all queue positions for this task list to prevent gaps
+    // Get all unique users who have queued tasks from this task list
+    const usersWithQueue = await pool.query(`
+      SELECT DISTINCT utq.user_id
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      WHERE t.task_list_id = $1
+    `, [taskListId]);
+
+    // Renumber each user's queue for this task list
+    for (const userRow of usersWithQueue.rows) {
+      const userId = userRow.user_id;
+
+      const queueTasks = await pool.query(`
+        SELECT utq.task_id, utq.queue_position
+        FROM user_task_queue utq
+        JOIN tasks t ON utq.task_id = t.id
+        WHERE utq.user_id = $1 AND t.task_list_id = $2
+        ORDER BY utq.queue_position
+      `, [userId, taskListId]);
+
+      for (let i = 0; i < queueTasks.rows.length; i++) {
+        const newPosition = i + 1;
+        const taskId = queueTasks.rows[i].task_id;
+
+        await pool.query(
+          'UPDATE user_task_queue SET queue_position = $1 WHERE user_id = $2 AND task_id = $3',
+          [newPosition, userId, taskId]
+        );
+      }
+
+      logger.info(`Renumbered queue for user ${userId} after task deletion`, {
+        taskListId,
+        queueSize: queueTasks.rows.length
+      });
+    }
+
+    // Emit real-time update
     io.to(`taskList_${taskListId}`).emit('taskDeleted', { id: parseInt(id) });
 
     res.json({ message: 'Task deleted successfully' });
@@ -1484,6 +1523,13 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
     const removedPosition = taskInfoResult.rows[0].queue_position;
     const taskListId = taskInfoResult.rows[0].task_list_id;
 
+    logger.info('Removing task from queue', {
+      userId,
+      taskId,
+      removedPosition,
+      taskListId
+    });
+
     // Remove from queue
     await pool.query(
       'DELETE FROM user_task_queue WHERE user_id = $1 AND task_id = $2',
@@ -1491,17 +1537,69 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
     );
 
     // Adjust positions of tasks that were after the removed task IN THE SAME TASK LIST
-    await pool.query(`
-      UPDATE user_task_queue utq
+    const updateResult = await pool.query(`
+      UPDATE user_task_queue
       SET queue_position = queue_position - 1
-      FROM tasks t
-      WHERE utq.task_id = t.id
-        AND utq.user_id = $1
-        AND t.task_list_id = $2
-        AND utq.queue_position > $3
+      WHERE user_id = $1
+        AND task_id IN (
+          SELECT t.id
+          FROM tasks t
+          WHERE t.task_list_id = $2
+        )
+        AND queue_position > $3
+      RETURNING task_id, queue_position
     `, [userId, taskListId, removedPosition]);
 
-    res.json({ message: 'Task removed from queue' });
+    logger.info('Updated queue positions after deletion', {
+      updatedCount: updateResult.rowCount,
+      updatedTasks: updateResult.rows
+    });
+
+    // Renumber all positions sequentially to prevent gaps
+    // First, get all tasks in this queue for this task list
+    const queueTasks = await pool.query(`
+      SELECT utq.task_id, utq.queue_position
+      FROM user_task_queue utq
+      JOIN tasks t ON utq.task_id = t.id
+      WHERE utq.user_id = $1 AND t.task_list_id = $2
+      ORDER BY utq.queue_position
+    `, [userId, taskListId]);
+
+    logger.info('Tasks to renumber', {
+      count: queueTasks.rows.length,
+      tasks: queueTasks.rows
+    });
+
+    // Renumber them sequentially
+    const renumberResult = { rows: [] };
+    for (let i = 0; i < queueTasks.rows.length; i++) {
+      const newPosition = i + 1;
+      const taskId = queueTasks.rows[i].task_id;
+      const oldPosition = queueTasks.rows[i].queue_position;
+
+      logger.info(`Renumbering task ${taskId} from position ${oldPosition} to ${newPosition}`);
+
+      const updateRes = await pool.query(
+        'UPDATE user_task_queue SET queue_position = $1 WHERE user_id = $2 AND task_id = $3',
+        [newPosition, userId, taskId]
+      );
+
+      logger.info(`Update affected ${updateRes.rowCount} rows`);
+
+      renumberResult.rows.push({ task_id: taskId, queue_position: newPosition });
+    }
+
+    renumberResult.rowCount = queueTasks.rows.length;
+
+    logger.info('Renumbered queue positions', {
+      renumberedCount: renumberResult.rowCount,
+      finalPositions: renumberResult.rows
+    });
+
+    res.json({
+      message: 'Task removed from queue',
+      updatedPositions: renumberResult.rows
+    });
   } catch (error) {
     logger.error('Remove from queue error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to remove task from queue' });
