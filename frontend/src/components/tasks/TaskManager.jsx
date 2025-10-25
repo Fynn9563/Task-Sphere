@@ -121,15 +121,24 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   };
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      return (
-        (filters.search === '' || task.name.toLowerCase().includes(filters.search.toLowerCase())) &&
-        (filters.requester === 'All' || task.requester_name === filters.requester) &&
-        (filters.project === 'All' || task.project_name === filters.project) &&
-        (filters.assignedTo === 'All' || task.assigned_to_name === filters.assignedTo) &&
-        (filters.priority === 'All' || task.priority === filters.priority)
-      );
-    });
+    return tasks
+      .filter(task => {
+        return (
+          (filters.search === '' || task.name.toLowerCase().includes(filters.search.toLowerCase())) &&
+          (filters.requester === 'All' || task.requester_name === filters.requester) &&
+          (filters.project === 'All' || task.project_name === filters.project) &&
+          (filters.assignedTo === 'All' || task.assigned_to_name === filters.assignedTo) &&
+          (filters.priority === 'All' || task.priority === filters.priority)
+        );
+      })
+      .sort((a, b) => {
+        // Sort by status: incomplete tasks first (false before true)
+        if (a.status !== b.status) {
+          return a.status ? 1 : -1;
+        }
+        // If same status, maintain original order (by id)
+        return a.id - b.id;
+      });
   }, [tasks, filters]);
 
   const toggleTaskStatus = async (taskId) => {
