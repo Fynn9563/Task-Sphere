@@ -253,6 +253,12 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
           return { ...task, queue_position: queueTask.queue_position };
         }
 
+        // Clear queue_position for tasks not in the queue to prevent stale data
+        if (task.queue_position !== null) {
+          console.log(`Clearing stale queue position for task ${task.id}`);
+          return { ...task, queue_position: null };
+        }
+
         return task;
       });
 
