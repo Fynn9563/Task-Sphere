@@ -35,8 +35,9 @@ Task Sphere helps you organize your tasks and collaborate in real time. Create l
 
 * **Filter & Sort**
 
-  * Filter tasks by status, assignee, or project.
-  * Sort by creation date or due date to focus on what matters.
+  * Filter tasks by status, assignee, project, or priority.
+  * Sort by ID, name, priority, requester, project, assigned to, due date, or creation date.
+  * Toggle between ascending and descending order.
 
 ## Getting Started
 
