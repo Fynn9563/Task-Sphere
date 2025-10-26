@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered } from 'lucide-react';
+import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered, ArrowUpDown } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { WebSocketService } from '../../services/WebSocketService';
 import DarkModeToggle from '../ui/DarkModeToggle';
@@ -21,7 +21,9 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
     requester: 'All',
     project: 'All',
     assignedTo: 'All',
-    priority: 'All'
+    priority: 'All',
+    sortBy: 'id',
+    sortDirection: 'asc'
   });
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -130,7 +132,49 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
         if (a.status !== b.status) {
           return a.status ? 1 : -1;
         }
-        return a.id - b.id;
+
+        // Apply selected sort field
+        let comparison = 0;
+        const direction = filters.sortDirection === 'asc' ? 1 : -1;
+
+        switch (filters.sortBy) {
+          case 'id':
+            comparison = (a.id - b.id) * direction;
+            break;
+          case 'name':
+            comparison = (a.name || '').localeCompare(b.name || '') * direction;
+            break;
+          case 'priority': {
+            const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+            comparison = ((priorityOrder[a.priority] || 0) - (priorityOrder[b.priority] || 0)) * direction;
+            break;
+          }
+          case 'requester':
+            comparison = (a.requester_name || '').localeCompare(b.requester_name || '') * direction;
+            break;
+          case 'project':
+            comparison = (a.project_name || '').localeCompare(b.project_name || '') * direction;
+            break;
+          case 'assignedTo':
+            comparison = (a.assigned_to_name || '').localeCompare(b.assigned_to_name || '') * direction;
+            break;
+          case 'dueDate': {
+            const aDate = a.due_date ? new Date(a.due_date).getTime() : 0;
+            const bDate = b.due_date ? new Date(b.due_date).getTime() : 0;
+            comparison = (aDate - bDate) * direction;
+            break;
+          }
+          case 'createdAt': {
+            const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+            comparison = (aCreated - bCreated) * direction;
+            break;
+          }
+          default:
+            comparison = (a.id - b.id) * direction;
+        }
+
+        return comparison;
       });
   }, [tasks, filters]);
 
@@ -508,11 +552,41 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             <div className="flex items-end">
               <button
                 onClick={() => setFilters({
-                  search: '', requester: 'All', project: 'All', assignedTo: 'All', priority: 'All'
+                  search: '', requester: 'All', project: 'All', assignedTo: 'All', priority: 'All', sortBy: 'id', sortDirection: 'asc'
                 })}
                 className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Reset Filters
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4 pt-4 border-t dark:border-gray-700">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sort By</label>
+              <select
+                value={filters.sortBy}
+                onChange={(e) => setFilters({...filters, sortBy: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="id">ID</option>
+                <option value="name">Name</option>
+                <option value="priority">Priority</option>
+                <option value="requester">Requester</option>
+                <option value="project">Project</option>
+                <option value="assignedTo">Assigned To</option>
+                <option value="dueDate">Due Date</option>
+                <option value="createdAt">Created Date</option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={() => setFilters({...filters, sortDirection: filters.sortDirection === 'asc' ? 'desc' : 'asc'})}
+                className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowUpDown className="w-4 h-4" />
+                {filters.sortDirection === 'asc' ? 'Ascending' : 'Descending'}
               </button>
             </div>
           </div>
