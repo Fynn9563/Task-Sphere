@@ -63,7 +63,7 @@ Task Sphere helps you organize your tasks and collaborate in real time. Create l
    * Click the bell icon to see your notifications.
    * Join list-specific chats to watch updates flow live.
 
-Enjoy a smooth workflow with Task Sphere. Focus on work—let Task Sphere handle the rest.
+Enjoy a smooth workflow with Task Sphere. Focus on your work—let Task Sphere handle the rest.
 
 ## Contributing
 
