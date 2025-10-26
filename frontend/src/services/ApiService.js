@@ -1,15 +1,14 @@
-// services/ApiService.js
 import { API_BASE_URL } from '../utils/constants';
 import { validateEmail, sanitizeInput, validateName, validateDescription } from '../utils/validation';
 
-// API Service with refresh token support
 export class ApiService {
   constructor(onAuthError = null) {
     this.baseURL = `${API_BASE_URL}/api`;
     this.token = localStorage.getItem('token');
     this.refreshToken = localStorage.getItem('refreshToken');
-    this.onAuthError = onAuthError; // Callback for auth errors
-    this.abortController = null; // For cancelling pending requests
+    this.onAuthError = onAuthError;
+    this.abortController = null;
+    this.refreshPromise = null; // Prevent simultaneous refresh attempts
   }
 
   setTokens(token, refreshToken) {
@@ -27,38 +26,44 @@ export class ApiService {
   }
 
   async refreshAccessToken() {
-    try {
-      const response = await fetch(`${this.baseURL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: this.refreshToken }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.setTokens(data.token, data.refreshToken);
-        return data.token;
-      }
-
-      throw new Error('Refresh failed');
-    } catch (error) {
-      // Call auth error callback to trigger logout
-      this.handleAuthError('expired');
-      throw error;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
     }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseURL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: this.refreshToken }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          this.setTokens(data.token, data.refreshToken);
+          return data.token;
+        }
+
+        throw new Error('Refresh failed');
+      } catch (error) {
+        this.handleAuthError('expired');
+        throw error;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   handleAuthError(reason = 'invalid') {
-    // Cancel any pending requests
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
     }
 
-    // Clear tokens
     this.removeTokens();
 
-    // Trigger logout callback if provided
     if (this.onAuthError) {
       this.onAuthError(reason);
     }
@@ -66,8 +71,6 @@ export class ApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
-
-    // Create new AbortController for this request
     this.abortController = new AbortController();
 
     const config = {

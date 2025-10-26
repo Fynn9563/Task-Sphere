@@ -1,4 +1,3 @@
-// contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '../services/ApiService';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/tokenValidator';
@@ -12,7 +11,6 @@ export const AuthProvider = ({ children }) => {
   const tokenCheckIntervalRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
 
-  // Save current session state before logout
   const saveSessionState = useCallback((taskList, taskId) => {
     if (taskList) {
       sessionStorage.setItem('savedSession', JSON.stringify({
@@ -24,13 +22,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Restore session state after login
   const restoreSessionState = useCallback(() => {
     const savedSession = sessionStorage.getItem('savedSession');
     if (savedSession) {
       try {
         const session = JSON.parse(savedSession);
-        // Only restore if less than 30 minutes old
         if (Date.now() - session.timestamp < 30 * 60 * 1000) {
           sessionStorage.removeItem('savedSession');
           return session;
@@ -43,10 +39,8 @@ export const AuthProvider = ({ children }) => {
     return null;
   }, []);
 
-  // Handle auth errors from ApiService
   const handleAuthError = useCallback((reason) => {
     console.log('Auth error detected:', reason);
-    // Clear token check intervals
     if (tokenCheckIntervalRef.current) {
       clearInterval(tokenCheckIntervalRef.current);
       tokenCheckIntervalRef.current = null;
@@ -55,11 +49,9 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(refreshTimeoutRef.current);
       refreshTimeoutRef.current = null;
     }
-    // User will be logged out, triggering redirect to login
     setUser(null);
   }, []);
 
-  // Validate token and check if it needs refreshing
   const validateAndRefreshToken = useCallback(async (apiService) => {
     const token = localStorage.getItem('token');
     const refreshToken = localStorage.getItem('refreshToken');
@@ -70,7 +62,6 @@ export const AuthProvider = ({ children }) => {
       return false;
     }
 
-    // Check if access token is expired
     if (isTokenExpired(token)) {
       console.log('Access token expired, attempting refresh...');
       try {
@@ -84,8 +75,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    // Check if token is expiring soon and preemptively refresh
-    if (isTokenExpiringSoon(token, 2 * 60 * 1000)) { // 2 minutes before expiration
+    if (isTokenExpiringSoon(token, 2 * 60 * 1000)) {
       console.log('Token expiring soon, preemptively refreshing...');
       try {
         await apiService.refreshAccessToken();
@@ -93,7 +83,6 @@ export const AuthProvider = ({ children }) => {
         return true;
       } catch (error) {
         console.error('Failed to preemptively refresh token:', error);
-        // Don't logout yet, token is still valid
         return true;
       }
     }
@@ -101,9 +90,7 @@ export const AuthProvider = ({ children }) => {
     return true;
   }, [handleAuthError]);
 
-  // Start periodic token validation
   const startTokenValidation = useCallback((apiService) => {
-    // Clear any existing intervals
     if (tokenCheckIntervalRef.current) {
       clearInterval(tokenCheckIntervalRef.current);
     }
@@ -111,7 +98,6 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(refreshTimeoutRef.current);
     }
 
-    // Check token validity every minute
     tokenCheckIntervalRef.current = setInterval(() => {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -124,18 +110,16 @@ export const AuthProvider = ({ children }) => {
         console.log('Token expired during periodic check, logging out');
         handleAuthError('expired');
       } else if (isTokenExpiringSoon(token, 2 * 60 * 1000)) {
-        // Preemptively refresh if expiring within 2 minutes
         console.log('Token expiring soon, refreshing...');
         apiService.refreshAccessToken().catch((error) => {
           console.error('Failed to refresh token during periodic check:', error);
           handleAuthError('expired');
         });
       }
-    }, 60 * 1000); // Check every 60 seconds
+    }, 60 * 1000);
   }, [handleAuthError]);
 
   useEffect(() => {
-    // Initialize ApiService with auth error callback
     const apiService = new ApiService(handleAuthError);
     setApi(apiService);
 
@@ -146,15 +130,12 @@ export const AuthProvider = ({ children }) => {
       if (token && refreshToken) {
         apiService.setTokens(token, refreshToken);
 
-        // Validate token on mount
         const isValid = await validateAndRefreshToken(apiService);
 
         if (isValid) {
-          setUser({ token: apiService.token }); // Use potentially refreshed token
-          // Start periodic token validation
+          setUser({ token: apiService.token });
           startTokenValidation(apiService);
         } else {
-          // Token validation failed, user will be logged out
           console.log('Token validation failed on mount');
         }
       }
@@ -163,7 +144,6 @@ export const AuthProvider = ({ children }) => {
 
     initializeAuth();
 
-    // Cleanup on unmount
     return () => {
       if (tokenCheckIntervalRef.current) {
         clearInterval(tokenCheckIntervalRef.current);
@@ -179,9 +159,7 @@ export const AuthProvider = ({ children }) => {
 
     const data = await api.login(email, password);
     setUser(data.user);
-    // Start periodic token validation after login
     startTokenValidation(api);
-    // Clear any previously selected task list when logging in
     localStorage.removeItem('selectedTaskList');
     return data;
   };
@@ -191,9 +169,7 @@ export const AuthProvider = ({ children }) => {
 
     const data = await api.register(email, password, name);
     setUser(data.user);
-    // Start periodic token validation after registration
     startTokenValidation(api);
-    // Clear any previously selected task list when registering
     localStorage.removeItem('selectedTaskList');
     return data;
   };
@@ -201,7 +177,6 @@ export const AuthProvider = ({ children }) => {
   const logout = (reason = 'manual') => {
     if (!api) return;
 
-    // Clear token check intervals
     if (tokenCheckIntervalRef.current) {
       clearInterval(tokenCheckIntervalRef.current);
       tokenCheckIntervalRef.current = null;
@@ -214,7 +189,6 @@ export const AuthProvider = ({ children }) => {
     api.removeTokens();
     setUser(null);
 
-    // Only clear selected task list on manual logout, not auth errors
     if (reason === 'manual') {
       localStorage.removeItem('selectedTaskList');
       sessionStorage.removeItem('savedSession');
@@ -237,5 +211,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);

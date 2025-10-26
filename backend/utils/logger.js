@@ -1,8 +1,6 @@
-// utils/logger.js
 const winston = require('winston');
 const { v4: uuidv4 } = require('uuid');
 
-// Define log levels
 const levels = {
   error: 0,
   warn: 1,
@@ -11,7 +9,6 @@ const levels = {
   debug: 4,
 };
 
-// Define colors for each level
 const colors = {
   error: 'red',
   warn: 'yellow',
@@ -20,10 +17,8 @@ const colors = {
   debug: 'white',
 };
 
-// Add colors to winston
 winston.addColors(colors);
 
-// Define log format
 const format = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
   winston.format.errors({ stack: true }),
@@ -31,9 +26,7 @@ const format = winston.format.combine(
   winston.format.json()
 );
 
-// Define which transports to use
 const transports = [
-  // Console transport for development
   new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize({ all: true }),
@@ -42,18 +35,15 @@ const transports = [
       )
     ),
   }),
-  // File transport for errors
   new winston.transports.File({
     filename: 'logs/error.log',
     level: 'error',
     format: winston.format.json(),
   }),
-  // File transport for all logs
   new winston.transports.File({
     filename: 'logs/combined.log',
     format: winston.format.json(),
   }),
-  // File transport for security events
   new winston.transports.File({
     filename: 'logs/security.log',
     level: 'warn',
@@ -61,7 +51,6 @@ const transports = [
   }),
 ];
 
-// Create the logger
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   levels,
@@ -69,14 +58,12 @@ const logger = winston.createLogger({
   transports,
 });
 
-// Request ID middleware
 const requestIdMiddleware = (req, res, next) => {
   req.id = uuidv4();
   res.setHeader('X-Request-Id', req.id);
   next();
 };
 
-// HTTP request logging middleware
 const httpLoggerMiddleware = (req, res, next) => {
   const start = Date.now();
 
@@ -98,7 +85,6 @@ const httpLoggerMiddleware = (req, res, next) => {
   next();
 };
 
-// Security logging helper
 const securityLog = (eventType, details, req = null) => {
   const logData = {
     eventType,
@@ -113,15 +99,14 @@ const securityLog = (eventType, details, req = null) => {
 };
 
 // Failed login tracking
-const failedLoginAttempts = new Map(); // In-memory store (consider Redis for production)
+const failedLoginAttempts = new Map();
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_DURATION = 15 * 60 * 1000;
 
 const trackFailedLogin = (identifier) => {
   const now = Date.now();
   const attempts = failedLoginAttempts.get(identifier) || { count: 0, firstAttempt: now, lockedUntil: null };
 
-  // Check if account is locked
   if (attempts.lockedUntil && now < attempts.lockedUntil) {
     const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
     return {
@@ -131,17 +116,14 @@ const trackFailedLogin = (identifier) => {
     };
   }
 
-  // Reset if it's been more than 15 minutes since first attempt
   if (now - attempts.firstAttempt > LOCKOUT_DURATION) {
     attempts.count = 0;
     attempts.firstAttempt = now;
     attempts.lockedUntil = null;
   }
 
-  // Increment failed attempts
   attempts.count++;
 
-  // Lock account if max attempts reached
   if (attempts.count >= MAX_FAILED_ATTEMPTS) {
     attempts.lockedUntil = now + LOCKOUT_DURATION;
     failedLoginAttempts.set(identifier, attempts);
@@ -178,7 +160,7 @@ const resetFailedLoginAttempts = (identifier) => {
   failedLoginAttempts.delete(identifier);
 };
 
-// Cleanup old entries periodically (every hour)
+// Cleanup expired lockouts hourly
 setInterval(() => {
   const now = Date.now();
   for (const [identifier, attempts] of failedLoginAttempts.entries()) {

@@ -1,4 +1,3 @@
-// components/tasks/MyQueueView.jsx
 import React, { useState, useEffect } from 'react';
 import { ListOrdered, Plus, Loader, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -20,7 +19,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// Sortable Task Item Component
 const SortableTaskItem = ({ task, index, onRemove, onDelete, onUpdate, members, projects, requesters }) => {
   const {
     attributes,
@@ -84,7 +82,6 @@ const SortableTaskItem = ({ task, index, onRemove, onDelete, onUpdate, members, 
   );
 };
 
-// Main Queue View Component
 const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpdate, onTaskDelete, onAddToQueue, onRemoveFromQueue, onReorderQueue }) => {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,33 +100,27 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
   useEffect(() => {
     loadQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskList.id]); // Reload queue when task list changes
+  }, [taskList.id]);
 
-  // Refresh queue when tasks are updated or deleted (via props)
   useEffect(() => {
-    // Skip sync if no tasks at all (initial state)
     if (tasks.length === 0) {
       return;
     }
 
-    // Skip if queue hasn't loaded yet
     if (queue.length === 0) {
       return;
     }
 
     let needsReload = false;
 
-    // Create updated queue by merging task updates from parent
     const updatedQueue = queue.map(qTask => {
       const parentTask = tasks.find(t => t.id === qTask.id);
 
       if (!parentTask) {
-        // Task was deleted - need full reload
         needsReload = true;
         return qTask;
       }
 
-      // Check if any properties changed (status, name, description, priority, etc.)
       const hasChanges =
         qTask.status !== parentTask.status ||
         qTask.name !== parentTask.name ||
@@ -138,16 +129,13 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
         qTask.due_date !== parentTask.due_date ||
         qTask.assigned_to !== parentTask.assigned_to;
 
-      // If properties changed, use the updated task data
       return hasChanges ? parentTask : qTask;
     });
 
     if (needsReload) {
-      // Task was deleted - reload from server
       console.log('Task deleted, reloading queue from server');
       loadQueue();
     } else {
-      // Check if queue actually changed to prevent infinite loops
       const queueChanged = updatedQueue.some((task, index) =>
         task.status !== queue[index].status ||
         task.name !== queue[index].name ||
@@ -160,7 +148,7 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks]); // Watch the entire tasks array, not just length
+  }, [tasks]);
 
   const loadQueue = async () => {
     try {
@@ -178,7 +166,6 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
   const handleDragEnd = async (event) => {
     const { active, over } = event;
 
-    // Check if over exists (user might have cancelled drag)
     if (!over || active.id === over.id) {
       return;
     }
@@ -188,7 +175,6 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
 
     const newQueue = arrayMove(queue, oldIndex, newIndex);
 
-    // Update queue_position property for each task in the reordered queue
     const newQueueWithPositions = newQueue.map((task, index) => ({
       ...task,
       queue_position: index + 1,
@@ -197,42 +183,36 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     setQueue(newQueueWithPositions);
 
     try {
-      // Update positions on the server
       const taskOrders = newQueueWithPositions.map((task, index) => ({
         taskId: task.id,
         position: index + 1,
       }));
 
       await api.reorderQueue(user.id, taskOrders);
-      setError(''); // Clear any previous errors
+      setError('');
 
-      // Notify parent to update queue positions in tasks state
       if (onReorderQueue) {
         onReorderQueue(newQueueWithPositions);
       }
     } catch (err) {
       console.error('Failed to reorder queue:', err);
       setError(err.message || 'Failed to save new order');
-      // Revert on error
       loadQueue();
     }
   };
 
   const handleAddToQueue = async (taskId) => {
-    if (operationLoading) return; // Prevent double-clicks
+    if (operationLoading) return;
 
     try {
       setOperationLoading(true);
-      setError(''); // Clear previous errors
+      setError('');
 
-      // Add to queue via API
       await api.addToQueue(user.id, taskId);
 
-      // Reload queue to get updated positions
       const queueData = await api.getQueue(user.id, taskList.id);
       setQueue(queueData);
 
-      // Find the newly added task's position
       const addedTask = queueData.find(t => t.id === taskId);
       if (addedTask && onAddToQueue) {
         onAddToQueue(taskId, addedTask.queue_position);
@@ -252,19 +232,17 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     console.log('operationLoading state:', operationLoading);
     if (operationLoading) {
       console.log('Operation already in progress, returning early');
-      return; // Prevent double-clicks
+      return;
     }
 
     try {
       setOperationLoading(true);
-      setError(''); // Clear previous errors
+      setError('');
 
-      // Remove from queue via API
       console.log('Calling API to remove from queue...');
       const removeResponse = await api.removeFromQueue(user.id, taskId);
       console.log('Remove response from backend:', removeResponse);
 
-      // Reload queue to get updated positions
       console.log('Reloading queue data for task list:', taskList.id);
       const queueData = await api.getQueue(user.id, taskList.id);
       console.log('Updated queue data from backend:', queueData);
@@ -274,7 +252,6 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
       });
       setQueue(queueData);
 
-      // Notify parent to update all queue positions
       if (onRemoveFromQueue) {
         console.log('Calling parent onRemoveFromQueue callback...');
         onRemoveFromQueue(taskId, queueData);
@@ -293,19 +270,17 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     console.log('handleDeleteTask called for task:', taskId);
     if (operationLoading) {
       console.log('Operation already in progress, returning early');
-      return; // Prevent double-clicks
+      return;
     }
 
     try {
       setOperationLoading(true);
       setError('');
 
-      // Delete the task via parent callback
       if (onTaskDelete) {
         await onTaskDelete(taskId);
       }
 
-      // Reload queue to reflect the deletion
       console.log('Task deleted, reloading queue...');
       const queueData = await api.getQueue(user.id, taskList.id);
       console.log('Updated queue data after deletion:', queueData);
@@ -318,7 +293,6 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
     }
   };
 
-  // Filter out tasks that are already in the queue
   const availableTasks = tasks.filter(
     task => !queue.some(queueTask => queueTask.id === task.id)
   );
@@ -405,7 +379,6 @@ const MyQueueView = ({ taskList, tasks, members, projects, requesters, onTaskUpd
         </div>
       )}
 
-      {/* Add Task Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">

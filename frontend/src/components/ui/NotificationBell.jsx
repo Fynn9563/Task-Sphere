@@ -1,9 +1,7 @@
-// components/ui/NotificationBell.jsx
 import React, { useState } from 'react';
 import { Bell, X, CheckCheck, Loader } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 
-// Enhanced Notification Bell Component with Navigation and Clear functionality
 const NotificationBell = ({ onNavigateToTask }) => {
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead, clearNotification, clearAllNotifications } = useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -11,8 +9,7 @@ const NotificationBell = ({ onNavigateToTask }) => {
   const formatTimeAgo = (dateString) => {
     const now = new Date();
     const date = new Date(dateString);
-    
-    // Add more detailed logging for debugging
+
     console.log('Formatting time - Now:', now.toISOString(), 'Date:', date.toISOString());
     
     const diffInSeconds = Math.floor((now - date) / 1000);
@@ -31,21 +28,16 @@ const NotificationBell = ({ onNavigateToTask }) => {
 
   const handleNotificationClick = async (notification) => {
     try {
-      // Mark as read if not already read
       if (!notification.read) {
         await markAsRead(notification.id);
       }
-      
-      // Close dropdown
+
       setShowDropdown(false);
-      
-      // Navigate to the task if it's a task-related notification
+
       if (notification.task_id && notification.task_list_id) {
-        // If we have a navigation callback (from home page), use it
         if (onNavigateToTask) {
           onNavigateToTask(notification.task_list_id, notification.task_id);
         } else {
-          // We're already in a task list, just highlight the task
           const event = new CustomEvent('highlightTask', { 
             detail: { 
               taskId: notification.task_id,
@@ -62,8 +54,7 @@ const NotificationBell = ({ onNavigateToTask }) => {
                 behavior: 'smooth', 
                 block: 'center' 
               });
-              
-              // Add highlight effect
+
               taskElement.classList.add('notification-highlight');
               setTimeout(() => {
                 taskElement.classList.remove('notification-highlight');
@@ -92,18 +83,14 @@ const NotificationBell = ({ onNavigateToTask }) => {
         )}
       </button>
 
-      {/* Notification Dropdown */}
       {showDropdown && (
         <>
-          {/* Backdrop */}
           <div 
             className="fixed inset-0 z-10" 
             onClick={() => setShowDropdown(false)}
           />
-          
-          {/* Dropdown */}
+
           <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border dark:border-gray-700 z-20 max-h-96 overflow-hidden">
-            {/* Header */}
             <div className="p-4 border-b dark:border-gray-700 flex items-center justify-between">
               <h3 className="font-semibold text-gray-800 dark:text-white">Notifications</h3>
               <div className="flex items-center gap-2">
@@ -128,7 +115,6 @@ const NotificationBell = ({ onNavigateToTask }) => {
               </div>
             </div>
 
-            {/* Notifications List */}
             <div className="max-h-80 overflow-y-auto">
               {loading ? (
                 <div className="p-4 text-center">

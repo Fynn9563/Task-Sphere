@@ -1,12 +1,10 @@
-// utils/validation.js
-
-// Input validation utilities
+// Basic email format validation
 export const validateEmail = (email) => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email);
 };
 
-// HTML entity decoder
+// Decode HTML entities to readable text
 export const decodeHtmlEntities = (text) => {
   if (typeof text !== 'string') return text;
   
@@ -49,20 +47,18 @@ export const decodeHtmlEntities = (text) => {
   });
 };
 
-// Clean display text for UI - decode HTML entities for display
+// Clean text for safe display
 export const cleanDisplayText = (text) => {
   if (!text || typeof text !== 'string') return text;
   return decodeHtmlEntities(text);
 };
 
-// Enhanced input sanitization - properly escapes HTML to prevent XSS
+// Escape HTML and limit length for safe storage
 export const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
 
-  // Trim whitespace
   let sanitized = input.trim();
 
-  // Escape HTML special characters to prevent XSS
   const htmlEscapeMap = {
     '&': '&amp;',
     '<': '&lt;',
@@ -74,7 +70,7 @@ export const sanitizeInput = (input) => {
 
   sanitized = sanitized.replace(/[&<>"'/]/g, (char) => htmlEscapeMap[char]);
 
-  // Limit length to prevent extremely long inputs
+  // Max 500 chars for input fields
   if (sanitized.length > 500) {
     sanitized = sanitized.substring(0, 500);
   }
@@ -82,38 +78,46 @@ export const sanitizeInput = (input) => {
   return sanitized;
 };
 
-// Validate project/task names to ensure they don't contain problematic characters
+// Validate names (max 100 chars, no HTML tags)
 export const validateName = (name) => {
   if (!name || typeof name !== 'string') return false;
-  
+
   const trimmed = name.trim();
-  
-  // Check minimum length
+
   if (trimmed.length < 1) return false;
-  
-  // Check maximum length
   if (trimmed.length > 100) return false;
-  
-  // Allow letters, numbers, spaces, and common punctuation
-  // But prevent HTML/XML-like tags
+
   const validPattern = /^[a-zA-Z0-9\s\-_.,!?@#$%^&*()+='":;/\\|`~[\]{}]+$/;
   const noHtmlTags = !/<[^>]*>/g.test(trimmed);
-  
+
   return validPattern.test(trimmed) && noHtmlTags;
 };
 
-// Validate descriptions (more lenient than names)
+// Validate descriptions (max 1000 chars, no HTML tags)
 export const validateDescription = (description) => {
-  if (!description) return true; // Optional field
+  if (!description) return true;
   if (typeof description !== 'string') return false;
-  
+
   const trimmed = description.trim();
-  
-  // Check maximum length
+
   if (trimmed.length > 1000) return false;
-  
-  // Prevent HTML/XML-like tags but allow most other characters
+
   const noHtmlTags = !/<[^>]*>/g.test(trimmed);
-  
+
   return noHtmlTags;
+};
+
+// Validate HH:MM time format
+export const validateTimeFormat = (timeString) => {
+  if (!timeString || timeString === '') return true;
+  if (typeof timeString !== 'string') return false;
+
+  const timeRegex = /^\d{1,3}:\d{2}$/;
+  if (!timeRegex.test(timeString)) return false;
+
+  const parts = timeString.split(':');
+  const hours = parseInt(parts[0]);
+  const minutes = parseInt(parts[1]);
+
+  return hours >= 0 && hours <= 999 && minutes >= 0 && minutes < 60;
 };

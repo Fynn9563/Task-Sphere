@@ -1,15 +1,15 @@
-// components/tasks/TaskManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { WebSocketService } from '../../services/WebSocketService';
 import DarkModeToggle from '../ui/DarkModeToggle';
 import NotificationBell from '../ui/NotificationBell';
+import SearchableCombobox from '../ui/SearchableCombobox';
 import TaskCreationForm from './TaskCreationForm';
 import TaskCard from './TaskCard';
 import MyQueueView from './MyQueueView';
 
-// Complete Task Manager Component
 const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
@@ -26,25 +26,21 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [error, setError] = useState('');
-  const [activeView, setActiveView] = useState('tasks'); // 'tasks' or 'queue'
+  const [activeView, setActiveView] = useState('tasks');
 
   const { logout, user, api } = useAuth();
 
-  // Create WebSocket instance only once using useMemo
   const ws = useMemo(() => new WebSocketService(), []);
 
   useEffect(() => {
     loadData();
 
-    // Connect to WebSocket and join task list room
     ws.connect();
     ws.joinTaskList(taskList.id);
 
-    // Set up real-time event listeners
     const handleTaskCreated = (task) => {
       console.log('WebSocket taskCreated event received:', task);
       setTasks(prev => {
-        // Prevent duplicates - check if task already exists
         if (prev.some(t => t.id === task.id)) {
           console.log('Task already exists in state, skipping duplicate');
           return prev;
@@ -78,24 +74,22 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskList.id]);
 
-  // Highlight initial task if provided
   useEffect(() => {
     if (initialTaskId && tasks.length > 0) {
       setTimeout(() => {
         const taskElement = document.querySelector(`[data-task-id="${initialTaskId}"]`);
         if (taskElement) {
-          taskElement.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center' 
+          taskElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
           });
-          
-          // Add highlight effect
+
           taskElement.classList.add('notification-highlight');
           setTimeout(() => {
             taskElement.classList.remove('notification-highlight');
           }, 3000);
         }
-      }, 500); // Wait a bit for the UI to render
+      }, 500);
     }
   }, [initialTaskId, tasks]);
 
@@ -132,11 +126,10 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
         );
       })
       .sort((a, b) => {
-        // Sort by status: incomplete tasks first (false before true)
+        // Incomplete tasks first
         if (a.status !== b.status) {
           return a.status ? 1 : -1;
         }
-        // If same status, maintain original order (by id)
         return a.id - b.id;
       });
   }, [tasks, filters]);
@@ -149,14 +142,11 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       };
       
       console.log('Toggling task status for:', taskId, 'with updates:', updates);
-      
-      // Get the complete updated task from the server
+
       const updatedTask = await api.updateTask(taskId, updates);
-      
       console.log('Received updated task after status toggle:', updatedTask);
-      
-      // Update the local state with the complete task data from server
-      setTasks(prevTasks => prevTasks.map(task => 
+
+      setTasks(prevTasks => prevTasks.map(task =>
         task.id === taskId ? updatedTask : task
       ));
       
@@ -169,8 +159,24 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
   const deleteTask = async (taskId) => {
     try {
       await api.deleteTask(taskId);
+
       setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
       setSelectedTasks(prevSelected => prevSelected.filter(id => id !== taskId));
+
+      // Backend renumbers queue automatically, refresh to show updated positions
+      try {
+        const updatedQueueData = await api.getQueue(user.id, taskList.id);
+
+        setTasks(prevTasks => prevTasks.map(task => {
+          const queueTask = updatedQueueData.find(qt => qt.id === task.id);
+          if (queueTask) {
+            return { ...task, queue_position: queueTask.queue_position };
+          }
+          return task;
+        }));
+      } catch (queueErr) {
+        console.error('Failed to refresh queue positions after delete:', queueErr);
+      }
     } catch (err) {
       setError(err.message || 'Failed to delete task');
     }
@@ -200,11 +206,24 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
 
   const handleAddToQueue = async (taskId) => {
     try {
-      const updatedTask = await api.addToQueue(user.id, taskId);
-      // Update only the specific task in local state (no loading screen)
-      setTasks(prevTasks => prevTasks.map(task =>
-        task.id === taskId ? updatedTask : task
-      ));
+      // Add to queue via API
+      await api.addToQueue(user.id, taskId);
+
+      // Reload queue to get updated positions for ALL tasks
+      const updatedQueueData = await api.getQueue(user.id, taskList.id);
+
+      // Update all task positions based on fresh queue data
+      setTasks(prevTasks => prevTasks.map(task => {
+        const queueTask = updatedQueueData.find(qt => qt.id === task.id);
+        if (queueTask) {
+          return { ...task, queue_position: queueTask.queue_position };
+        }
+        // Clear queue position for tasks not in queue
+        if (task.queue_position !== null && task.queue_position !== undefined) {
+          return { ...task, queue_position: null };
+        }
+        return task;
+      }));
     } catch (err) {
       console.error('Failed to add to queue:', err);
       setError(err.message || 'Failed to add task to queue');
@@ -384,6 +403,18 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
           members={members}
           projects={projects}
           requesters={requesters}
+          onProjectAdded={(project) => {
+            setProjects(prev => [...prev, project]);
+          }}
+          onProjectDeleted={(projectId) => {
+            setProjects(prev => prev.filter(p => p.id !== projectId));
+          }}
+          onRequesterAdded={(requester) => {
+            setRequesters(prev => [...prev, requester]);
+          }}
+          onRequesterDeleted={(requesterId) => {
+            setRequesters(prev => prev.filter(r => r.id !== requesterId));
+          }}
         />
 
         {/* View Tabs */}
@@ -432,47 +463,32 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
               </div>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Assigned To</label>
-              <select
-                value={filters.assignedTo}
-                onChange={(e) => setFilters({...filters, assignedTo: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="All">All Members</option>
-                {members.map(member => (
-                  <option key={member.id} value={member.name}>{member.name}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableCombobox
+              label="Assigned To"
+              value={filters.assignedTo === 'All' ? '' : filters.assignedTo}
+              onChange={(value) => setFilters({...filters, assignedTo: value || 'All'})}
+              options={members.map(m => ({ id: m.id, name: m.name }))}
+              placeholder="All Members"
+              displayValue={(option) => option?.name || 'All Members'}
+            />
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Requester</label>
-              <select
-                value={filters.requester}
-                onChange={(e) => setFilters({...filters, requester: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="All">All Requesters</option>
-                {requesters.map(req => (
-                  <option key={req.id} value={req.name}>{req.name}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableCombobox
+              label="Requester"
+              value={filters.requester === 'All' ? '' : filters.requester}
+              onChange={(value) => setFilters({...filters, requester: value || 'All'})}
+              options={requesters.map(r => ({ id: r.id, name: r.name }))}
+              placeholder="All Requesters"
+              displayValue={(option) => option?.name || 'All Requesters'}
+            />
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project</label>
-              <select
-                value={filters.project}
-                onChange={(e) => setFilters({...filters, project: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="All">All Projects</option>
-                {projects.map(proj => (
-                  <option key={proj.id} value={proj.name}>{proj.name}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableCombobox
+              label="Project"
+              value={filters.project === 'All' ? '' : filters.project}
+              onChange={(value) => setFilters({...filters, project: value || 'All'})}
+              options={projects.map(p => ({ id: p.id, name: p.name }))}
+              placeholder="All Projects"
+              displayValue={(option) => option?.name || 'All Projects'}
+            />
             
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priority</label>
@@ -567,7 +583,26 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
                   onClick={async () => {
                     const tasksToDelete = [...selectedTasks];
                     setSelectedTasks([]);
-                    await Promise.all(tasksToDelete.map(taskId => deleteTask(taskId)));
+
+                    // Delete all tasks
+                    await Promise.all(tasksToDelete.map(taskId => api.deleteTask(taskId)));
+
+                    // Remove from local state
+                    setTasks(prevTasks => prevTasks.filter(task => !tasksToDelete.includes(task.id)));
+
+                    // Refresh queue positions once after all deletes (more efficient than per-task)
+                    try {
+                      const updatedQueueData = await api.getQueue(user.id, taskList.id);
+                      setTasks(prevTasks => prevTasks.map(task => {
+                        const queueTask = updatedQueueData.find(qt => qt.id === task.id);
+                        if (queueTask) {
+                          return { ...task, queue_position: queueTask.queue_position };
+                        }
+                        return task;
+                      }));
+                    } catch (queueErr) {
+                      console.error('Failed to refresh queue positions after bulk delete:', queueErr);
+                    }
                   }}
                   className="px-3 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/70 text-sm"
                 >
@@ -700,6 +735,17 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
       )}
     </div>
   );
+};
+
+TaskManager.propTypes = {
+  taskList: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired,
+    invite_code: PropTypes.string,
+    owner_id: PropTypes.number
+  }).isRequired,
+  onBack: PropTypes.func.isRequired,
+  initialTaskId: PropTypes.number
 };
 
 export default TaskManager;

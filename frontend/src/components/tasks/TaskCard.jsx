@@ -1,9 +1,9 @@
-// components/tasks/TaskCard.jsx
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
 
-// Helper function to format estimated hours for display
+// Format hours to readable time
 const formatEstimatedHours = (hours) => {
   if (!hours || hours === 0) return null;
 
@@ -20,7 +20,7 @@ const formatEstimatedHours = (hours) => {
   }
 };
 
-// Convert decimal hours to HH:MM format for input
+// Decimal hours to HH:MM
 const hoursToTimeString = (hours) => {
   if (!hours) return '';
   const totalMinutes = Math.round(hours * 60);
@@ -29,7 +29,7 @@ const hoursToTimeString = (hours) => {
   return `${h}:${m.toString().padStart(2, '0')}`;
 };
 
-// Convert HH:MM format to decimal hours
+// HH:MM to decimal hours
 const timeStringToHours = (timeString) => {
   if (!timeString || timeString === '') return null;
 
@@ -44,7 +44,6 @@ const timeStringToHours = (timeString) => {
   return hours + (minutes / 60);
 };
 
-// Enhanced Task Card Component with comprehensive editing
 const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects, requesters, onAddToQueue, onRemoveFromQueue }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -60,7 +59,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
   });
   const [editErrors, setEditErrors] = useState({});
 
-  // Update editData when task changes (for real-time updates)
+  // Sync edit data with task updates
   useEffect(() => {
     setEditData({
       name: cleanDisplayText(task.name) || '',
@@ -72,10 +71,9 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
       due_date: task.due_date || '',
       estimated_hours: hoursToTimeString(task.estimated_hours)
     });
-    setEditErrors({}); // Clear errors when task changes
+    setEditErrors({});
   }, [task]);
 
-  // Validation function for edit form
   const validateEditForm = () => {
     const errors = {};
     
@@ -102,11 +100,10 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
     return Object.keys(errors).length === 0;
   };
 
-  // Listen for highlight events from notifications
+  // Highlight task on notification click
   useEffect(() => {
     const handleHighlight = (event) => {
       if (event.detail.taskId === task.id) {
-        // Add highlight class temporarily
         const element = document.querySelector(`[data-task-id="${task.id}"]`);
         if (element) {
           element.classList.add('notification-highlight');
@@ -133,14 +130,13 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
 
   const handleQuickUpdate = async () => {
     if (!validateEditForm()) {
-      return; // Don't submit if validation fails
+      return;
     }
-    
+
     try {
       setUpdateLoading(true);
       console.log('Starting comprehensive update for task:', task.id, 'with data:', editData);
-      
-      // Prepare update data
+
       const updatesData = {
         name: editData.name.trim(),
         description: editData.description.trim() || null,
@@ -161,7 +157,6 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
       setEditErrors({});
     } catch (error) {
       console.error('Update failed:', error);
-      // Don't close editing panel if update failed, show error in editErrors
       setEditErrors({ general: error.message || 'Failed to update task' });
     } finally {
       setUpdateLoading(false);
@@ -261,7 +256,6 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
             <Edit3 className="w-4 h-4" />
           </button>
 
-          {/* Add to Queue / Remove from Queue button */}
           {task.queue_position ? (
             onRemoveFromQueue && (
               <button
@@ -309,8 +303,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           </button>
         </div>
       </div>
-      
-      {/* Comprehensive Edit Panel */}
+
       {isEditing && (
         <div className="border-t dark:border-gray-600 pt-4 mt-4">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Edit Task</h4>
@@ -320,8 +313,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               <p className="text-red-700 dark:text-red-300">{editErrors.general}</p>
             </div>
           )}
-          
-          {/* Task Name */}
+
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
               Task Name *
@@ -342,8 +334,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               <p className="text-red-600 dark:text-red-400 text-xs mt-1">{editErrors.name}</p>
             )}
           </div>
-          
-          {/* Description */}
+
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
               Description
@@ -365,8 +356,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               <p className="text-red-600 dark:text-red-400 text-xs mt-1">{editErrors.description}</p>
             )}
           </div>
-          
-          {/* Row 1: Assignment and Priority */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -402,8 +392,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               </select>
             </div>
           </div>
-          
-          {/* Row 2: Project and Requester */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -439,8 +428,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               </select>
             </div>
           </div>
-          
-          {/* Row 3: Due Date and Estimated Hours */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -477,14 +465,12 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               )}
             </div>
           </div>
-          
-          {/* Action Buttons */}
+
           <div className="flex justify-end gap-2">
             <button
               onClick={() => {
                 setIsEditing(false);
                 setEditErrors({});
-                // Reset editData to original task values
                 setEditData({
                   name: task.name || '',
                   description: task.description || '',
@@ -523,6 +509,33 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
       )}
     </div>
   );
+};
+
+TaskCard.propTypes = {
+  task: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    status: PropTypes.bool,
+    priority: PropTypes.oneOf(['low', 'medium', 'high', 'urgent']),
+    due_date: PropTypes.string,
+    estimated_hours: PropTypes.number,
+    project_id: PropTypes.number,
+    project_name: PropTypes.string,
+    requester_id: PropTypes.number,
+    requester_name: PropTypes.string,
+    assigned_to: PropTypes.number,
+    assigned_to_name: PropTypes.string,
+    queue_position: PropTypes.number
+  }).isRequired,
+  onToggleStatus: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onUpdate: PropTypes.func.isRequired,
+  members: PropTypes.array.isRequired,
+  projects: PropTypes.array.isRequired,
+  requesters: PropTypes.array.isRequired,
+  onAddToQueue: PropTypes.func,
+  onRemoveFromQueue: PropTypes.func
 };
 
 export default TaskCard;

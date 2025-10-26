@@ -7,6 +7,7 @@ const { Server } = require('socket.io');
 const http = require('http');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const timeout = require('connect-timeout');
 const Joi = require('joi');
 const { escape: sanitizeString, isEmail: validateEmailFormat } = require('./utils/validation');
 const cron = require('node-cron');
@@ -20,10 +21,9 @@ const {
 } = require('./utils/logger');
 require('dotenv').config();
 
-// Sanitize data for logging to prevent log injection
+// Prevent log injection attacks
 const sanitizeForLog = (data) => {
   if (typeof data === 'string') {
-    // Remove newlines, carriage returns, and control characters
     return data.replace(/[\n\r\t\x00-\x1F\x7F]/g, '');
   }
   if (typeof data === 'object' && data !== null) {
@@ -47,13 +47,15 @@ const io = new Server(server, {
   }
 });
 
-// Trust Proxy
-app.set('trust proxy', 1);
-
 // Security middleware
+app.set('trust proxy', 1);
 app.use(helmet());
+app.use(timeout('30s'));
+app.use((req, res, next) => {
+  if (!req.timedout) next();
+});
 
-// HTTPS enforcement in production
+// Force HTTPS in production
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
     if (req.header('x-forwarded-proto') !== 'https') {
@@ -64,34 +66,31 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Rate limiting - relaxed in development, strict in production
+// Rate limiting
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 1000 : 100 // Much higher limit in development
+  windowMs: 15 * 60 * 1000,
+  max: isDevelopment ? 1000 : 100
 });
 
-// Stricter rate limiting for authentication endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 50 : 5, // Relaxed in development
+  windowMs: 15 * 60 * 1000,
+  max: isDevelopment ? 50 : 5,
   message: { error: 'Too many authentication attempts, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Rate limiting for queue operations
 const queueLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 500 : 50, // Relaxed in development
+  windowMs: 15 * 60 * 1000,
+  max: isDevelopment ? 500 : 50,
   message: { error: 'Too many queue operations, please try again later' }
 });
 
 app.use('/api/', limiter);
 
-// Database connection with SSL
-// Requires SUPABASE_CA_CERT environment variable
+// Database connection
 if (!process.env.SUPABASE_CA_CERT) {
   throw new Error('SUPABASE_CA_CERT environment variable is required');
 }
@@ -110,23 +109,17 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
-
-// Enhanced logging middleware
 app.use(requestIdMiddleware);
 app.use(httpLoggerMiddleware);
-
-// Serve security.txt
 app.use(express.static('public'));
 
-// Sanitization helper (uses safe validator wrapper)
+// Helper functions
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
   return sanitizeString(input);
 };
 
-// Note: securityLog is now imported from utils/logger.js
 
-// Password validation helper
 const validatePassword = (password) => {
   if (password.length < 8) {
     return { valid: false, error: 'Password must be at least 8 characters long' };
@@ -143,9 +136,8 @@ const validatePassword = (password) => {
   return { valid: true };
 };
 
-// Joi Validation Schemas
+// Validation schemas
 const schemas = {
-  // Task creation/update schema
   task: Joi.object({
     name: Joi.string().min(1).max(500).optional().messages({
       'string.empty': 'Task name is required',
@@ -176,7 +168,6 @@ const schemas = {
     status: Joi.boolean()
   }),
 
-  // Task list schema
   taskList: Joi.object({
     name: Joi.string().min(1).max(200).required().messages({
       'string.empty': 'Task list name is required',
@@ -189,17 +180,16 @@ const schemas = {
   })
 };
 
-// Test route
+// Routes
 app.get('/', (req, res) => {
   res.json({ message: 'Task Sphere API is running!' });
 });
 
-// Health check route
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// JWT middleware with refresh token support
+// Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -225,7 +215,6 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Debug route to check auth
 app.get('/api/debug/auth', authenticateToken, (req, res) => {
   res.json({ 
     message: 'Auth working',
@@ -234,7 +223,7 @@ app.get('/api/debug/auth', authenticateToken, (req, res) => {
   });
 });
 
-// Database initialization
+// Database setup
 const initDatabase = async () => {
   try {
     await pool.query(`
@@ -333,9 +322,9 @@ const initDatabase = async () => {
   }
 };
 
-// Helper functions
+// Generate 8-char invite code
 const generateInviteCode = () => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
 };
 
 const generateTokens = (userId) => {
@@ -345,7 +334,6 @@ const generateTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
-// Helper function to create notifications
 const createNotification = async (userId, taskId, taskListId, type, title, message) => {
   try {
     logger.debug('Creating notification', {
@@ -360,10 +348,9 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
       'INSERT INTO notifications (user_id, task_id, task_list_id, type, title, message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *',
       [userId, taskId, taskListId, type, title, message]
     );
-    
+
     const notification = result.rows[0];
-    
-    // Get additional task list info for the notification
+
     if (taskListId) {
       const taskListResult = await pool.query(
         'SELECT name FROM task_lists WHERE id = $1',
@@ -374,10 +361,8 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
         notification.task_list_name = taskListResult.rows[0].name;
       }
     }
-    
-    // Emit real-time notification with proper timestamp
+
     io.to(`user_${userId}`).emit('newNotification', notification);
-    
     logger.debug('Notification created and emitted', { notificationId: sanitizeForLog(notification.id) });
     return notification;
   } catch (error) {
@@ -385,12 +370,12 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
   }
 };
 
-// Auth Routes
+// Auth routes
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body;
 
-    // Validate input format before processing
+
     if (!email || typeof email !== 'string' || email.length === 0 ||
         !password || typeof password !== 'string' || password.length === 0 ||
         !name || typeof name !== 'string' || name.length === 0) {
@@ -401,25 +386,21 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    // Validate password complexity
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.valid) {
       return res.status(400).json({ error: passwordValidation.error });
     }
-    
-    // Sanitize inputs
+
     const sanitizedEmail = sanitizeInput(email.toLowerCase());
     const sanitizedName = sanitizeInput(name);
-    
-    // Check if user exists
+
+
     const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [sanitizedEmail]);
     if (existingUser.rows.length > 0) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
-    // Hash password and create user
     const passwordHash = await bcrypt.hash(password, 12);
-    
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name',
       [sanitizedEmail, passwordHash, sanitizedName]
@@ -427,16 +408,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
     const user = result.rows[0];
     logger.info('User registered', { userId: sanitizeForLog(user.id), email: sanitizeForLog(user.email) });
-    
+
     const { accessToken, refreshToken } = generateTokens(user.id);
-    
-    // Update user with refresh token
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, user.id]);
-    
-    res.status(201).json({ 
-      user, 
+
+    res.status(201).json({
+      user,
       token: accessToken,
-      refreshToken 
+      refreshToken
     });
   } catch (error) {
     logger.error('Registration error', { error: sanitizeForLog(error.message) });
@@ -448,7 +427,6 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input format before processing
     if (!email || typeof email !== 'string' || email.length === 0 ||
         !password || typeof password !== 'string' || password.length === 0) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -456,7 +434,6 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
     const sanitizedEmail = sanitizeInput(email.toLowerCase());
 
-    // Check if account is locked due to failed attempts
     const lockStatus = trackFailedLogin(sanitizedEmail);
     if (lockStatus.locked) {
       securityLog('LOGIN_BLOCKED', {
@@ -471,9 +448,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const user = result.rows[0];
 
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
-      // Track failed attempt
       const failedStatus = trackFailedLogin(sanitizedEmail);
-
       securityLog('LOGIN_FAILURE', {
         email: sanitizedEmail,
         reason: 'Invalid credentials',
@@ -491,15 +466,11 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       });
     }
 
-    // Successful login - reset failed attempts
     resetFailedLoginAttempts(sanitizedEmail);
-
     logger.info('User Login Success', { userId: user.id, email: sanitizedEmail, requestId: req.id });
     securityLog('LOGIN_SUCCESS', { userId: user.id, email: sanitizedEmail }, req);
 
     const { accessToken, refreshToken } = generateTokens(user.id);
-
-    // Update refresh token in database
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, user.id]);
 
     res.json({
@@ -513,38 +484,31 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   }
 });
 
-// Refresh token route
 app.post('/api/auth/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
 
-    // Validate refresh token format before processing
     if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.length === 0) {
       return res.status(401).json({ error: 'Refresh token required' });
     }
 
-    // Verify refresh token signature and extract payload
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     logger.debug('Refresh token decoded', { userId: sanitizeForLog(decoded.userId) });
-    
-    // Check if refresh token exists in database
-    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND refresh_token = $2', 
+
+    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND refresh_token = $2',
       [decoded.userId, refreshToken]);
-      
+
     if (user.rows.length === 0) {
       return res.status(403).json({ error: 'Invalid refresh token' });
     }
-    
-    // Generate new tokens
+
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
-    
-    // Update refresh token in database
-    await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', 
+    await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2',
       [newRefreshToken, decoded.userId]);
-    
-    res.json({ 
-      token: accessToken, 
-      refreshToken: newRefreshToken 
+
+    res.json({
+      token: accessToken,
+      refreshToken: newRefreshToken
     });
   } catch (error) {
     logger.error('Token refresh error', { error: sanitizeForLog(error.message) });
@@ -552,7 +516,7 @@ app.post('/api/auth/refresh', async (req, res) => {
   }
 });
 
-// Task List Routes
+// Task list routes
 app.get('/api/task-lists', authenticateToken, async (req, res) => {
   try {
     logger.debug('Getting task lists', { userId: sanitizeForLog(req.user.userId) });
@@ -585,7 +549,6 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
   try {
     const { name, description } = req.body;
 
-    // Joi Validation
     const { error } = schemas.taskList.validate(req.body, { abortEarly: false });
     if (error) {
       const errorMessage = error.details.map(detail => detail.message).join('; ');
@@ -606,7 +569,6 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
     const taskListId = result.rows[0].id;
     logger.debug('Task list created', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
-    // Add owner as member
     await pool.query(
       'INSERT INTO task_list_members (task_list_id, user_id, role) VALUES ($1, $2, $3) RETURNING *',
       [taskListId, req.user.userId, 'owner']
@@ -614,7 +576,7 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
 
     logger.debug('Member added to task list', { taskListId: sanitizeForLog(taskListId), userId: sanitizeForLog(req.user.userId) });
 
-    // Return enriched data with same format as getTaskLists
+
     const enrichedResult = await pool.query(`
       SELECT tl.*, u.name as owner_name,
              COUNT(DISTINCT CASE WHEN tlm.user_id IS NOT NULL THEN tlm.user_id END) as member_count,
@@ -636,14 +598,13 @@ app.post('/api/task-lists', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete task list route
 app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     logger.debug('Deleting task list', { taskListId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
-    
-    // Check if user is the owner of this task list
+
+
     const ownerCheck = await pool.query(
       'SELECT id, owner_id FROM task_lists WHERE id = $1',
       [id]
@@ -664,7 +625,6 @@ app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Only the owner can delete this task list' });
     }
 
-    // Delete the task list (CASCADE will handle related data)
     await pool.query('DELETE FROM task_lists WHERE id = $1', [id]);
 
     logger.info('Task list deleted', { taskListId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
@@ -677,7 +637,6 @@ app.delete('/api/task-lists/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Join task list via invite code
 app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
   try {
     const { inviteCode } = req.body;
@@ -700,8 +659,7 @@ app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
     }
 
     const taskList = taskListResult.rows[0];
-    
-    // Check if user is already a member
+
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [taskList.id, req.user.userId]
@@ -725,7 +683,7 @@ app.post('/api/task-lists/join', authenticateToken, async (req, res) => {
   }
 });
 
-// Notifications Routes
+// Notification routes
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
     logger.debug('Getting notifications', { userId: sanitizeForLog(req.user.userId) });
@@ -740,7 +698,6 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
       LIMIT 50
     `, [req.user.userId]);
 
-    // Process notifications to ensure proper timestamp format
     const notifications = result.rows.map(notification => ({
       ...notification,
       created_at: new Date(notification.created_at).toISOString()
@@ -839,7 +796,6 @@ app.get('/api/task-lists/:id/members', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Verify user has access to this task list
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [id, req.user.userId]
@@ -864,12 +820,12 @@ app.get('/api/task-lists/:id/members', authenticateToken, async (req, res) => {
   }
 });
 
-// Tasks Routes
+// Task routes
 app.get('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Verify user has access to this task list
+
+
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [id, req.user.userId]
@@ -905,14 +861,12 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { name, description, projectId, requesterId, priority, assignedTo, dueDate, estimatedHours } = req.body;
 
-    // Joi Validation
     const { error } = schemas.task.validate(req.body, { abortEarly: false });
     if (error) {
       const errorMessage = error.details.map(detail => detail.message).join('; ');
       return res.status(400).json({ error: errorMessage });
     }
-    
-    // Verify access
+
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [id, req.user.userId]
@@ -921,13 +875,11 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     if (memberCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
-    // Handle assignedTo field properly
+
     let processedAssignedTo = null;
     if (assignedTo !== null && assignedTo !== undefined && assignedTo !== "") {
       const assignedToId = parseInt(assignedTo);
       if (!isNaN(assignedToId)) {
-        // Verify assigned user is a member if assignedTo is provided
         const assignedMemberCheck = await pool.query(
           'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
           [id, assignedToId]
@@ -940,7 +892,6 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
       }
     }
 
-    // Validate estimated hours
     if (estimatedHours !== null && estimatedHours !== undefined && estimatedHours !== "") {
       const hours = parseFloat(estimatedHours);
       if (isNaN(hours) || hours < 0 || hours > 999) {
@@ -948,10 +899,8 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
       }
     }
 
-    // Sanitize inputs
     const sanitizedName = sanitizeInput(name);
     const sanitizedDescription = description ? sanitizeInput(description) : null;
-
     logger.debug('Creating task', { assignedTo: processedAssignedTo });
 
     const result = await pool.query(
@@ -963,7 +912,6 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
        estimatedHours || null, req.user.userId]
     );
 
-    // Get the complete task with related data (including queue position for creator)
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
@@ -982,7 +930,6 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
 
     logger.info('Task created', { taskId: sanitizeForLog(newTask.id), taskListId: sanitizeForLog(id) });
 
-    // Create notification if task is assigned to someone (and not to the creator)
     if (processedAssignedTo && processedAssignedTo !== req.user.userId) {
       try {
         await createNotification(
@@ -995,11 +942,9 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
         );
       } catch (notifError) {
         logger.error('Error creating assignment notification', { error: sanitizeForLog(notifError.message) });
-        // Don't fail task creation if notification fails
       }
     }
 
-    // Emit real-time update
     io.to(`taskList_${id}`).emit('taskCreated', newTask);
 
     res.status(201).json(newTask);
@@ -1016,7 +961,6 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     logger.debug('Updating task', { taskId: sanitizeForLog(id) });
 
-    // Joi Validation (allow partial updates)
     const { error } = schemas.task.validate(updates, { abortEarly: false, allowUnknown: true });
     if (error) {
       logger.warn('Task validation error', { error: sanitizeForLog(error.message) });
@@ -1025,35 +969,32 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     }
     logger.debug('Task validation passed');
 
-    // Get the original task to check for assignment changes
     const originalTaskResult = await pool.query(
       'SELECT assigned_to, task_list_id FROM tasks WHERE id = $1',
       [id]
     );
-    
+
     if (originalTaskResult.rows.length === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }
-    
+
     const originalTask = originalTaskResult.rows[0];
-    
-    // Validate that we have updates to make
+
     const validUpdates = {};
     const allowedFields = [
       'name', 'description', 'status', 'priority',
       'due_date', 'estimated_hours', 'estimatedHours', 'project_id', 'projectId',
       'requester_id', 'requesterId', 'assigned_to', 'assignedTo', 'day_assigned', 'dayAssigned'
     ];
-    
-    // Helper function to convert camelCase to snake_case
+
     const toSnakeCase = (str) => {
       return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     };
 
-    // Filter and sanitize updates, converting camelCase to snake_case
+
     Object.keys(updates).forEach(key => {
       if (allowedFields.includes(key) && updates[key] !== undefined) {
-        const dbKey = toSnakeCase(key); // Convert to snake_case for database
+        const dbKey = toSnakeCase(key);
         if (typeof updates[key] === 'string') {
           validUpdates[dbKey] = sanitizeInput(updates[key]);
         } else {
@@ -1062,26 +1003,23 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
       }
     });
 
-    // Check if we have any valid updates
     if (Object.keys(validUpdates).length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
     logger.debug('Valid updates prepared', { fields: Object.keys(validUpdates) });
 
-    // Build dynamic update query with proper parameter indexing
     const setClause = Object.keys(validUpdates)
       .map((key, index) => `${key} = $${index + 2}`)
       .join(', ');
-    
+
     const values = [id, ...Object.values(validUpdates)];
-    
     logger.debug('SQL SET clause generated');
     logger.debug('SQL values prepared', { valueCount: values.length });
-    
+
     const query = `UPDATE tasks SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
     logger.debug('Final query prepared');
-    
+
     const result = await pool.query(query, values);
 
     if (result.rows.length === 0) {
@@ -1090,7 +1028,6 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     logger.debug('Task updated in database', { taskId: sanitizeForLog(result.rows[0].id) });
 
-    // Get the complete task with related data
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
@@ -1108,18 +1045,16 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     logger.info('Task update complete', { taskId: sanitizeForLog(updatedTask.id) });
 
-    // Create notification for task assignment changes
-    if (validUpdates.assigned_to !== undefined && 
+    if (validUpdates.assigned_to !== undefined &&
         validUpdates.assigned_to !== originalTask.assigned_to &&
         validUpdates.assigned_to !== req.user.userId) {
-      
+
       try {
-        // Get task list info for notification
         const taskListResult = await pool.query(
           'SELECT tl.name FROM task_lists tl WHERE tl.id = $1',
           [originalTask.task_list_id]
         );
-        
+
         if (taskListResult.rows.length > 0 && validUpdates.assigned_to) {
           await createNotification(
             validUpdates.assigned_to,
@@ -1132,11 +1067,9 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
         }
       } catch (notifError) {
         logger.error('Error creating assignment notification', { error: sanitizeForLog(notifError.message) });
-        // Don't fail the update if notification fails
       }
     }
 
-    // Emit real-time update
     const taskListId = updatedTask.task_list_id;
     io.to(`taskList_${taskListId}`).emit('taskUpdated', updatedTask);
 
@@ -1159,45 +1092,27 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
 
     const taskListId = result.rows[0].task_list_id;
 
-    // After deleting task (which cascades to user_task_queue),
-    // renumber all queue positions for this task list to prevent gaps
-    // Get all unique users who have queued tasks from this task list
-    const usersWithQueue = await pool.query(`
-      SELECT DISTINCT utq.user_id
-      FROM user_task_queue utq
-      JOIN tasks t ON utq.task_id = t.id
-      WHERE t.task_list_id = $1
+    const renumberResult = await pool.query(`
+      UPDATE user_task_queue utq
+      SET queue_position = subquery.new_position
+      FROM (
+        SELECT
+          utq2.user_id,
+          utq2.task_id,
+          ROW_NUMBER() OVER (PARTITION BY utq2.user_id ORDER BY utq2.queue_position) as new_position
+        FROM user_task_queue utq2
+        JOIN tasks t ON utq2.task_id = t.id
+        WHERE t.task_list_id = $1
+      ) AS subquery
+      WHERE utq.user_id = subquery.user_id AND utq.task_id = subquery.task_id
+      RETURNING utq.user_id, utq.task_id, utq.queue_position
     `, [taskListId]);
 
-    // Renumber each user's queue for this task list
-    for (const userRow of usersWithQueue.rows) {
-      const userId = userRow.user_id;
+    logger.info('Renumbered queue positions for all users after task deletion', {
+      taskListId,
+      totalUpdates: renumberResult.rowCount
+    });
 
-      const queueTasks = await pool.query(`
-        SELECT utq.task_id, utq.queue_position
-        FROM user_task_queue utq
-        JOIN tasks t ON utq.task_id = t.id
-        WHERE utq.user_id = $1 AND t.task_list_id = $2
-        ORDER BY utq.queue_position
-      `, [userId, taskListId]);
-
-      for (let i = 0; i < queueTasks.rows.length; i++) {
-        const newPosition = i + 1;
-        const taskId = queueTasks.rows[i].task_id;
-
-        await pool.query(
-          'UPDATE user_task_queue SET queue_position = $1 WHERE user_id = $2 AND task_id = $3',
-          [newPosition, userId, taskId]
-        );
-      }
-
-      logger.info(`Renumbered queue for user ${userId} after task deletion`, {
-        taskListId,
-        queueSize: queueTasks.rows.length
-      });
-    }
-
-    // Emit real-time update
     io.to(`taskList_${taskListId}`).emit('taskDeleted', { id: parseInt(id) });
 
     res.json({ message: 'Task deleted successfully' });
@@ -1207,7 +1122,7 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Projects and Requesters Routes
+// Project and requester routes
 app.get('/api/task-lists/:id/projects', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1283,14 +1198,13 @@ app.post('/api/task-lists/:id/requesters', authenticateToken, async (req, res) =
   }
 });
 
-// Delete project route
 app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     logger.debug('Deleting project', { projectId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
-    
-    // First, check if the project exists and get task list info
+
+
     const projectCheck = await pool.query(
       'SELECT p.*, tl.owner_id FROM projects p JOIN task_lists tl ON p.task_list_id = tl.id WHERE p.id = $1',
       [id]
@@ -1299,24 +1213,22 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
     if (projectCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
-    
+
+
     const project = projectCheck.rows[0];
-    
-    // Check if user has permission (owner or member of task list)
+
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [project.task_list_id, req.user.userId]
     );
-    
+
     if (memberCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
-    // Delete the project (tasks will be set to NULL due to ON DELETE SET NULL)
+
     await pool.query('DELETE FROM projects WHERE id = $1', [id]);
-    
     logger.info('Project deleted', { projectId: sanitizeForLog(id) });
-    
+
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
     logger.error('Delete project error', { error: sanitizeForLog(error.message) });
@@ -1324,14 +1236,12 @@ app.delete('/api/projects/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Queue Routes
-// Get user's task queue
+// Queue routes
 app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { taskListId } = req.query; // Get task list ID from query params
+    const { taskListId } = req.query;
 
-    // Verify user is requesting their own queue
     if (parseInt(userId) !== req.user.userId) {
       securityLog('ACCESS_DENIED', {
         reason: 'User attempting to access another user\'s queue',
@@ -1341,7 +1251,6 @@ app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req,
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Verify user is a member of the task list if taskListId is provided
     if (taskListId) {
       const memberCheck = await pool.query(
         'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
@@ -1358,7 +1267,6 @@ app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req,
       }
     }
 
-    // Filter by task list if provided
     let query, params;
     if (taskListId) {
       query = `
@@ -1376,7 +1284,6 @@ app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req,
       `;
       params = [userId, taskListId];
     } else {
-      // Legacy support - get all queue items
       query = `
         SELECT t.*, p.name as project_name, r.name as requester_name,
                assigned_user.name as assigned_to_name, creator.name as created_by_name,
@@ -1401,18 +1308,15 @@ app.get('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req,
   }
 });
 
-// Add task to queue
 app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
     const { taskId } = req.body;
 
-    // Verify user is modifying their own queue
     if (parseInt(userId) !== req.user.userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get the task's task_list_id
     const taskResult = await pool.query(
       'SELECT task_list_id FROM tasks WHERE id = $1',
       [taskId]
@@ -1424,7 +1328,6 @@ app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req
 
     const taskListId = taskResult.rows[0].task_list_id;
 
-    // Get the highest position in the queue FOR THIS TASK LIST
     const maxPosResult = await pool.query(`
       SELECT COALESCE(MAX(utq.queue_position), 0) as max_pos
       FROM user_task_queue utq
@@ -1434,13 +1337,11 @@ app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req
 
     const newPosition = maxPosResult.rows[0].max_pos + 1;
 
-    // Insert into queue
     await pool.query(
       'INSERT INTO user_task_queue (user_id, task_id, queue_position) VALUES ($1, $2, $3) ON CONFLICT (user_id, task_id) DO NOTHING',
       [userId, taskId, newPosition]
     );
 
-    // Return the full task with queue info
     const result = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
@@ -1461,18 +1362,16 @@ app.post('/api/users/:userId/queue', authenticateToken, queueLimiter, async (req
   }
 });
 
-// Reorder queue (bulk update for drag-drop)
 app.put('/api/users/:userId/queue/reorder', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { taskOrders } = req.body; // Array of { taskId, position }
+    const { taskOrders } = req.body;
 
-    // Verify user is modifying their own queue
     if (parseInt(userId) !== req.user.userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Use a transaction to update all positions atomically
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -1498,17 +1397,15 @@ app.put('/api/users/:userId/queue/reorder', authenticateToken, queueLimiter, asy
   }
 });
 
-// Remove task from queue
 app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, async (req, res) => {
   try {
     const { userId, taskId } = req.params;
 
-    // Verify user is modifying their own queue
     if (parseInt(userId) !== req.user.userId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get the task's task_list_id and position
+
     const taskInfoResult = await pool.query(`
       SELECT utq.queue_position, t.task_list_id
       FROM user_task_queue utq
@@ -1530,13 +1427,11 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
       taskListId
     });
 
-    // Remove from queue
     await pool.query(
       'DELETE FROM user_task_queue WHERE user_id = $1 AND task_id = $2',
       [userId, taskId]
     );
 
-    // Adjust positions of tasks that were after the removed task IN THE SAME TASK LIST
     const updateResult = await pool.query(`
       UPDATE user_task_queue
       SET queue_position = queue_position - 1
@@ -1555,43 +1450,22 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
       updatedTasks: updateResult.rows
     });
 
-    // Renumber all positions sequentially to prevent gaps
-    // First, get all tasks in this queue for this task list
-    const queueTasks = await pool.query(`
-      SELECT utq.task_id, utq.queue_position
-      FROM user_task_queue utq
-      JOIN tasks t ON utq.task_id = t.id
-      WHERE utq.user_id = $1 AND t.task_list_id = $2
-      ORDER BY utq.queue_position
+    const renumberResult = await pool.query(`
+      UPDATE user_task_queue utq
+      SET queue_position = subquery.new_position
+      FROM (
+        SELECT
+          utq2.task_id,
+          ROW_NUMBER() OVER (ORDER BY utq2.queue_position) as new_position
+        FROM user_task_queue utq2
+        JOIN tasks t ON utq2.task_id = t.id
+        WHERE utq2.user_id = $1 AND t.task_list_id = $2
+      ) AS subquery
+      WHERE utq.user_id = $1 AND utq.task_id = subquery.task_id
+      RETURNING utq.task_id, utq.queue_position
     `, [userId, taskListId]);
 
-    logger.info('Tasks to renumber', {
-      count: queueTasks.rows.length,
-      tasks: queueTasks.rows
-    });
-
-    // Renumber them sequentially
-    const renumberResult = { rows: [] };
-    for (let i = 0; i < queueTasks.rows.length; i++) {
-      const newPosition = i + 1;
-      const taskId = queueTasks.rows[i].task_id;
-      const oldPosition = queueTasks.rows[i].queue_position;
-
-      logger.info(`Renumbering task ${taskId} from position ${oldPosition} to ${newPosition}`);
-
-      const updateRes = await pool.query(
-        'UPDATE user_task_queue SET queue_position = $1 WHERE user_id = $2 AND task_id = $3',
-        [newPosition, userId, taskId]
-      );
-
-      logger.info(`Update affected ${updateRes.rowCount} rows`);
-
-      renumberResult.rows.push({ task_id: taskId, queue_position: newPosition });
-    }
-
-    renumberResult.rowCount = queueTasks.rows.length;
-
-    logger.info('Renumbered queue positions', {
+    logger.info('Renumbered queue positions in single query', {
       renumberedCount: renumberResult.rowCount,
       finalPositions: renumberResult.rows
     });
@@ -1606,14 +1480,13 @@ app.delete('/api/users/:userId/queue/:taskId', authenticateToken, queueLimiter, 
   }
 });
 
-// Delete requester route
 app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     logger.debug('Deleting requester', { requesterId: sanitizeForLog(id), userId: sanitizeForLog(req.user.userId) });
-    
-    // First, check if the requester exists and get task list info
+
+
     const requesterCheck = await pool.query(
       'SELECT r.*, tl.owner_id FROM requesters r JOIN task_lists tl ON r.task_list_id = tl.id WHERE r.id = $1',
       [id]
@@ -1622,24 +1495,21 @@ app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
     if (requesterCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Requester not found' });
     }
-    
+
     const requester = requesterCheck.rows[0];
-    
-    // Check if user has permission (owner or member of task list)
+
     const memberCheck = await pool.query(
       'SELECT id FROM task_list_members WHERE task_list_id = $1 AND user_id = $2',
       [requester.task_list_id, req.user.userId]
     );
-    
+
     if (memberCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
-    // Delete the requester (tasks will be set to NULL due to ON DELETE SET NULL)
+
     await pool.query('DELETE FROM requesters WHERE id = $1', [id]);
-    
     logger.info('Requester deleted', { requesterId: sanitizeForLog(id) });
-    
+
     res.json({ message: 'Requester deleted successfully' });
   } catch (error) {
     logger.error('Delete requester error', { error: sanitizeForLog(error.message) });
@@ -1647,23 +1517,20 @@ app.delete('/api/requesters/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// WebSocket connection handling
+// WebSocket handlers
 io.on('connection', (socket) => {
   logger.debug('WebSocket user connected', { socketId: sanitizeForLog(socket.id) });
 
-  // Join user room for notifications
   socket.on('joinUser', (userId) => {
     socket.join(`user_${userId}`);
     logger.debug('User joined room', { socketId: sanitizeForLog(socket.id), userId: sanitizeForLog(userId) });
   });
 
-  // Join task list room
   socket.on('joinTaskList', (taskListId) => {
     socket.join(`taskList_${taskListId}`);
     logger.debug('User joined task list room', { socketId: sanitizeForLog(socket.id), taskListId: sanitizeForLog(taskListId) });
   });
 
-  // Leave task list room
   socket.on('leaveTaskList', (taskListId) => {
     socket.leave(`taskList_${taskListId}`);
     logger.debug('User left task list room', { socketId: sanitizeForLog(socket.id), taskListId: sanitizeForLog(taskListId) });
@@ -1674,7 +1541,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Database keep-alive job - runs once per day at 3 AM
+// Daily database keep-alive
 cron.schedule('0 3 * * *', async () => {
   try {
     logger.debug('Running database keep-alive ping');
@@ -1685,7 +1552,7 @@ cron.schedule('0 3 * * *', async () => {
   }
 });
 
-// Initialize database and start server
+// Start server
 initDatabase().then(() => {
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, () => {

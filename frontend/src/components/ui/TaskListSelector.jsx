@@ -1,4 +1,3 @@
-// components/ui/TaskListSelector.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Trash2, LogOut, Loader, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -6,7 +5,6 @@ import { cleanDisplayText } from '../../utils/validation';
 import DarkModeToggle from './DarkModeToggle';
 import NotificationBell from './NotificationBell';
 
-// Task List Selection Component
 const TaskListSelector = ({ onSelectTaskList }) => {
   const [taskLists, setTaskLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +21,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
   const { logout, user, api } = useAuth();
 
   const handleNavigateToTask = (taskListId, taskId) => {
-    // Find the task list and select it, then pass the task ID for highlighting
     const taskList = taskLists.find(list => list.id === taskListId);
     if (taskList) {
       onSelectTaskList(taskList, taskId);
@@ -36,7 +33,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-select task list if session was restored
   useEffect(() => {
     const autoSelectId = sessionStorage.getItem('autoSelectTaskListId');
     if (autoSelectId && taskLists.length > 0) {
@@ -44,7 +40,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
       if (taskList) {
         console.log('Auto-selecting restored task list:', taskList);
         sessionStorage.removeItem('autoSelectTaskListId');
-        // Small delay to ensure proper initialization
         setTimeout(() => {
           onSelectTaskList(taskList);
         }, 100);
@@ -57,13 +52,13 @@ const TaskListSelector = ({ onSelectTaskList }) => {
 
     try {
       setLoading(true);
-      setError(''); // Clear any previous errors
+      setError('');
       const lists = await api.getTaskLists();
-      console.log('Loaded task lists:', lists); // Debug log
-      console.log('Current user for ownership check:', user); // Debug log
+      console.log('Loaded task lists:', lists);
+      console.log('Current user for ownership check:', user);
       setTaskLists(lists);
     } catch (err) {
-      console.error('Error loading task lists:', err); // Debug log
+      console.error('Error loading task lists:', err);
       setError(err.message || 'Failed to load task lists');
     } finally {
       setLoading(false);
@@ -75,21 +70,19 @@ const TaskListSelector = ({ onSelectTaskList }) => {
     
     try {
       setCreateLoading(true);
-      setError(''); // Clear any previous errors
-      
+      setError('');
+
       const newList = await api.createTaskList(newListName, newListDescription);
-      
-      // Add the new list to the beginning of the array
+
       setTaskLists(prevLists => [newList, ...prevLists]);
-      
-      // Reset form and close modal
+
       setShowCreateForm(false);
       setNewListName('');
       setNewListDescription('');
-      
-      console.log('New task list created:', newList); // Debug log
+
+      console.log('New task list created:', newList);
     } catch (err) {
-      console.error('Error creating task list:', err); // Debug log
+      console.error('Error creating task list:', err);
       setError(err.message);
     } finally {
       setCreateLoading(false);
@@ -101,17 +94,16 @@ const TaskListSelector = ({ onSelectTaskList }) => {
     
     try {
       setJoinLoading(true);
-      setError(''); // Clear any previous errors
-      
+      setError('');
+
       await api.joinTaskList(inviteCode);
-      
-      // Reload the entire list to get the joined list with proper data
+
       await loadTaskLists();
-      
+
       setShowJoinForm(false);
       setInviteCode('');
     } catch (err) {
-      console.error('Error joining task list:', err); // Debug log
+      console.error('Error joining task list:', err);
       setError(err.message);
     } finally {
       setJoinLoading(false);
@@ -128,8 +120,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
       await api.deleteTaskList(taskListId);
       
       console.log('Task list deleted successfully');
-      
-      // Remove the deleted list from the UI
+
       setTaskLists(prevLists => prevLists.filter(list => list.id !== taskListId));
       
       setShowDeleteConfirm(null);
@@ -185,22 +176,20 @@ const TaskListSelector = ({ onSelectTaskList }) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {/* Create New List Card */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border-2 border-dashed border-gray-300 dark:border-gray-600 p-6 text-center hover:border-blue-400 dark:hover:border-blue-500 transition-colors cursor-pointer"
                onClick={() => {
                  setShowCreateForm(true);
-                 setError(''); // Clear errors when opening
+                 setError('');
                }}>
             <Plus className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-2">Create New List</h3>
             <p className="text-gray-600 dark:text-gray-400 text-sm">Start a new task list for your team</p>
           </div>
 
-          {/* Join List Card */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border-2 border-dashed border-gray-300 dark:border-gray-600 p-6 text-center hover:border-green-400 dark:hover:border-green-500 transition-colors cursor-pointer"
                onClick={() => {
                  setShowJoinForm(true);
-                 setError(''); // Clear errors when opening
+                 setError('');
                }}>
             <Users className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-2">Join a List</h3>
@@ -208,7 +197,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
           </div>
         </div>
 
-        {/* Existing Task Lists */}
         {taskLists.length > 0 && (
           <div>
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Your Task Lists</h2>
@@ -229,8 +217,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
                         >
                           {cleanDisplayText(list.name)}
                         </h3>
-                        
-                        {/* Only show delete button for owners */}
+
                         {isOwner && (
                           <button
                             onClick={(e) => {
@@ -244,8 +231,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
                           </button>
                         )}
                       </div>
-                      
-                      {/* Owner indicator */}
+
                       <div className="flex items-center gap-2 mb-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${
                           isOwner 
@@ -284,7 +270,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
           </div>
         )}
 
-        {/* Create List Modal */}
         {showCreateForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
@@ -347,7 +332,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
           </div>
         )}
 
-        {/* Join List Modal */}
         {showJoinForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
@@ -376,7 +360,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
                   <button
                     onClick={() => {
                       setShowJoinForm(false);
-                      setError(''); // Clear errors when closing
+                      setError('');
                       setInviteCode('');
                     }}
                     className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
@@ -397,7 +381,6 @@ const TaskListSelector = ({ onSelectTaskList }) => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
@@ -433,7 +416,7 @@ const TaskListSelector = ({ onSelectTaskList }) => {
                   <button
                     onClick={() => {
                       setShowDeleteConfirm(null);
-                      setError(''); // Clear errors when closing
+                      setError('');
                     }}
                     className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                     disabled={deleteLoading[showDeleteConfirm.id]}

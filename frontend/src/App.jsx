@@ -1,55 +1,43 @@
-// App.jsx
 import React, { useState, useEffect } from 'react';
 import { Loader } from 'lucide-react';
-
-// Context Providers
 import { DarkModeProvider } from './contexts/DarkModeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-
-// Hooks
 import { useAuth } from './hooks/useAuth';
-
-// Components
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import TaskListSelector from './components/ui/TaskListSelector';
 import TaskManager from './components/tasks/TaskManager';
 
-// Main App Component with Dark Mode
 const TaskSphere = () => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [selectedTaskList, setSelectedTaskList] = useState(null);
   const [initialTaskId, setInitialTaskId] = useState(null);
   const { user, loading, saveSessionState, restoreSessionState } = useAuth();
 
-  // Save session state when user logs out due to auth error
+  // Save current state before logout
   useEffect(() => {
     if (!user && selectedTaskList) {
-      // Save current state before clearing
       saveSessionState(selectedTaskList, initialTaskId);
     }
   }, [user, selectedTaskList, initialTaskId, saveSessionState]);
 
-  // Reset selected task list when user changes or logs out
+  // Reset state when logged out
   useEffect(() => {
     if (!user) {
       setSelectedTaskList(null);
       setInitialTaskId(null);
-      setIsLoginMode(true); // Always go to login mode when logged out
+      setIsLoginMode(true);
     }
   }, [user]);
 
-  // Restore session after successful login
+  // Restore session after login
   useEffect(() => {
     if (user && !selectedTaskList) {
       const savedSession = restoreSessionState();
       if (savedSession) {
         console.log('Restoring session:', savedSession);
-        // We'll need to fetch the task list by ID
-        // This will be handled in TaskListSelector via a prop
         setInitialTaskId(savedSession.taskId);
-        // Store the ID so TaskListSelector can auto-select it
         sessionStorage.setItem('autoSelectTaskListId', savedSession.taskListId);
       }
     }

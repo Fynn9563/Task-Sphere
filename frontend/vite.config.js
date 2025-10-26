@@ -7,30 +7,26 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // Subresource Integrity plugin for production builds
     sri({
       algorithms: ['sha384', 'sha512'],
     }),
-    // Security headers plugin
     {
       name: 'security-headers',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // Content Security Policy
           res.setHeader(
             'Content-Security-Policy',
             "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " + // Note: eval needed for dev mode, cdnjs for socket.io
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
             "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data: https:; " +
             "font-src 'self' data:; " +
-            "connect-src 'self' http://localhost:5000 ws: wss:; " + // Allow backend API in dev
+            "connect-src 'self' http://localhost:5000 ws: wss:; " +
             "frame-ancestors 'none'; " +
             "base-uri 'self'; " +
             "form-action 'self';"
           );
 
-          // Other security headers
           res.setHeader('X-Content-Type-Options', 'nosniff');
           res.setHeader('X-Frame-Options', 'DENY');
           res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -57,13 +53,11 @@ export default defineConfig({
     },
   },
   build: {
-    // Enable source maps for production debugging
-    sourcemap: true,
-    // Security: minimize bundle size
+    sourcemap: false,
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true, // Remove console.logs in production
+        drop_console: true,
       },
     },
   },

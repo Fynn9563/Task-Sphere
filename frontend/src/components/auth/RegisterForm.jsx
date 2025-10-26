@@ -1,11 +1,9 @@
-// components/auth/RegisterForm.jsx
 import React, { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Loader } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { validateEmail, validateName } from '../../utils/validation';
 import DarkModeToggle from '../ui/DarkModeToggle';
 
-// Enhanced Register Form with Dark Mode and Validation
 const RegisterForm = ({ onToggleMode }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -24,24 +22,28 @@ const RegisterForm = ({ onToggleMode }) => {
   const validateForm = () => {
     const newErrors = {};
 
+    // Validate name field
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
     } else if (!validateName(formData.name)) {
       newErrors.name = 'Name contains invalid characters or is too long (max 100 characters)';
     }
 
+    // Validate email format
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!validateEmail(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
 
+    // Validate password strength
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters';
     }
 
+    // Confirm passwords match
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
@@ -69,6 +71,7 @@ const RegisterForm = ({ onToggleMode }) => {
 
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear field error on change
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }

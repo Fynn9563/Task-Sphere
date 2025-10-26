@@ -1,10 +1,11 @@
-// components/tasks/TaskCreationForm.jsx
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { Plus, Loader, AlertCircle, Trash2 } from 'lucide-react';
-import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
+import { validateName, validateDescription, cleanDisplayText, validateTimeFormat } from '../../utils/validation';
 import { useAuth } from '../../hooks/useAuth';
+import SearchableCombobox from '../ui/SearchableCombobox';
 
-// Convert HH:MM format to decimal hours
+// Convert HH:MM string to decimal hours
 const timeStringToHours = (timeString) => {
   if (!timeString || timeString === '') return null;
 
@@ -19,8 +20,17 @@ const timeStringToHours = (timeString) => {
   return hours + (minutes / 60);
 };
 
-// Enhanced Task Creation Component
-const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requesters }) => {
+const TaskCreationForm = ({
+  taskList,
+  onTaskCreated,
+  members,
+  projects,
+  requesters,
+  onProjectAdded,
+  onProjectDeleted,
+  onRequesterAdded,
+  onRequesterDeleted
+}) => {
   const [newTask, setNewTask] = useState({
     name: '',
     description: '',
@@ -56,21 +66,26 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validate task name
+
+    // Validate required fields
     if (!newTask.name.trim()) {
       setError('Task name is required');
       return;
     }
-    
+
+    // Validate input formats
     if (!validateName(newTask.name)) {
       setError('Task name contains invalid characters or is too long (max 100 characters)');
       return;
     }
-    
-    // Validate description if provided
+
     if (newTask.description && !validateDescription(newTask.description)) {
       setError('Task description contains invalid characters or is too long (max 1000 characters)');
+      return;
+    }
+
+    if (newTask.estimated_hours && !validateTimeFormat(newTask.estimated_hours)) {
+      setError('Estimated time must be in HH:MM format (e.g., 1:30, 0:45, 10:00)');
       return;
     }
 
@@ -78,6 +93,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
     setError('');
 
     try {
+      // Prepare task data with proper type conversions
       const taskData = {
         name: newTask.name.trim(),
         description: newTask.description.trim() || null,
@@ -106,17 +122,19 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
 
   const addRequester = async () => {
     if (!newRequester.trim()) return;
-    
+
     if (!validateName(newRequester)) {
       setError('Requester name contains invalid characters or is too long');
       return;
     }
-    
+
     try {
       const requester = await api.createRequester(taskList.id, newRequester.trim());
-      requesters.push(requester);
+      if (onRequesterAdded) {
+        onRequesterAdded(requester);
+      }
       setNewRequester('');
-      setError(''); // Clear any previous errors
+      setError('');
     } catch (err) {
       setError(err.message);
     }
@@ -124,17 +142,19 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
 
   const addProject = async () => {
     if (!newProject.trim()) return;
-    
+
     if (!validateName(newProject)) {
       setError('Project name contains invalid characters or is too long');
       return;
     }
-    
+
     try {
       const project = await api.createProject(taskList.id, newProject.trim());
-      projects.push(project);
+      if (onProjectAdded) {
+        onProjectAdded(project);
+      }
       setNewProject('');
-      setError(''); // Clear any previous errors
+      setError('');
     } catch (err) {
       setError(err.message);
     }
@@ -142,60 +162,54 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
 
   const deleteProject = async (projectId) => {
     try {
-      setDeleteLoading(prev => ({ 
-        ...prev, 
-        projects: { ...prev.projects, [projectId]: true } 
+      setDeleteLoading(prev => ({
+        ...prev,
+        projects: { ...prev.projects, [projectId]: true }
       }));
-      
+
       await api.deleteProject(projectId);
-      
-      // Remove from local state
-      const projectIndex = projects.findIndex(p => p.id === projectId);
-      if (projectIndex > -1) {
-        projects.splice(projectIndex, 1);
+
+      if (onProjectDeleted) {
+        onProjectDeleted(projectId);
       }
-      
-      // If this project was selected in the form, clear it
+
       if (newTask.project_id === projectId.toString()) {
         setNewTask(prev => ({ ...prev, project_id: '' }));
       }
-      
+
     } catch (err) {
       setError(err.message || 'Failed to delete project');
     } finally {
-      setDeleteLoading(prev => ({ 
-        ...prev, 
-        projects: { ...prev.projects, [projectId]: false } 
+      setDeleteLoading(prev => ({
+        ...prev,
+        projects: { ...prev.projects, [projectId]: false }
       }));
     }
   };
 
   const deleteRequester = async (requesterId) => {
     try {
-      setDeleteLoading(prev => ({ 
-        ...prev, 
-        requesters: { ...prev.requesters, [requesterId]: true } 
+      setDeleteLoading(prev => ({
+        ...prev,
+        requesters: { ...prev.requesters, [requesterId]: true }
       }));
-      
+
       await api.deleteRequester(requesterId);
-      
-      // Remove from local state
-      const requesterIndex = requesters.findIndex(r => r.id === requesterId);
-      if (requesterIndex > -1) {
-        requesters.splice(requesterIndex, 1);
+
+      if (onRequesterDeleted) {
+        onRequesterDeleted(requesterId);
       }
-      
-      // If this requester was selected in the form, clear it
+
       if (newTask.requester_id === requesterId.toString()) {
         setNewTask(prev => ({ ...prev, requester_id: '' }));
       }
-      
+
     } catch (err) {
       setError(err.message || 'Failed to delete requester');
     } finally {
-      setDeleteLoading(prev => ({ 
-        ...prev, 
-        requesters: { ...prev.requesters, [requesterId]: false } 
+      setDeleteLoading(prev => ({
+        ...prev,
+        requesters: { ...prev.requesters, [requesterId]: false }
       }));
     }
   };
@@ -214,7 +228,6 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
           </div>
         )}
 
-        {/* First Row - Task Details */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -262,23 +275,18 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
           </div>
         </div>
 
-        {/* Second Row - Assignment & Project */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Assign To
-            </label>
-            <select
-              value={newTask.assigned_to}
-              onChange={(e) => setNewTask({...newTask, assigned_to: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Unassigned</option>
-              {members.map(member => (
-                <option key={member.id} value={member.id}>{member.name}</option>
-              ))}
-            </select>
-          </div>
+          <SearchableCombobox
+            label="Assign To"
+            value={newTask.assigned_to ? members.find(m => m.id === parseInt(newTask.assigned_to))?.name || '' : ''}
+            onChange={(value) => {
+              const member = members.find(m => m.name === value);
+              setNewTask({...newTask, assigned_to: member ? member.id.toString() : ''});
+            }}
+            options={members.map(m => ({ id: m.id, name: m.name }))}
+            placeholder="Unassigned"
+            displayValue={(option) => option?.name || 'Unassigned'}
+          />
           
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -293,22 +301,27 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
                 {showProjectManager ? 'Hide' : 'Manage'} Projects
               </button>
             </div>
-            <select
-              value={newTask.project_id}
-              onChange={(e) => setNewTask({...newTask, project_id: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">No Project</option>
-              {projects.map(project => (
-                <option key={project.id} value={project.id}>{cleanDisplayText(project.name)}</option>
-              ))}
-            </select>
-            
-            {/* Project Management Section */}
+            {projects.length > 0 ? (
+              <SearchableCombobox
+                value={newTask.project_id ? projects.find(p => p.id === parseInt(newTask.project_id))?.name || '' : ''}
+                onChange={(value) => {
+                  const project = projects.find(p => p.name === value);
+                  setNewTask({...newTask, project_id: project ? project.id.toString() : ''});
+                }}
+                options={projects.map(p => ({ id: p.id, name: cleanDisplayText(p.name) }))}
+                placeholder="No Project"
+                displayValue={(option) => option?.name || 'No Project'}
+              />
+            ) : (
+              <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm">
+                No projects - click "Manage Projects" to add one
+              </div>
+            )}
+
+
             {showProjectManager && (
               <div className="mt-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
                 <div className="space-y-2">
-                  {/* Add New Project */}
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -328,8 +341,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
                       Add
                     </button>
                   </div>
-                  
-                  {/* Existing Projects */}
+
                   {projects.length > 0 && (
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Existing Projects:</p>
@@ -371,22 +383,27 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
                 {showRequesterManager ? 'Hide' : 'Manage'} Requesters
               </button>
             </div>
-            <select
-              value={newTask.requester_id}
-              onChange={(e) => setNewTask({...newTask, requester_id: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">No Requester</option>
-              {requesters.map(requester => (
-                <option key={requester.id} value={requester.id}>{cleanDisplayText(requester.name)}</option>
-              ))}
-            </select>
-            
-            {/* Requester Management Section */}
+            {requesters.length > 0 ? (
+              <SearchableCombobox
+                value={newTask.requester_id ? requesters.find(r => r.id === parseInt(newTask.requester_id))?.name || '' : ''}
+                onChange={(value) => {
+                  const requester = requesters.find(r => r.name === value);
+                  setNewTask({...newTask, requester_id: requester ? requester.id.toString() : ''});
+                }}
+                options={requesters.map(r => ({ id: r.id, name: cleanDisplayText(r.name) }))}
+                placeholder="No Requester"
+                displayValue={(option) => option?.name || 'No Requester'}
+              />
+            ) : (
+              <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm">
+                No requesters - click "Manage Requesters" to add one
+              </div>
+            )}
+
+
             {showRequesterManager && (
               <div className="mt-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
                 <div className="space-y-2">
-                  {/* Add New Requester */}
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -406,8 +423,7 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
                       Add
                     </button>
                   </div>
-                  
-                  {/* Existing Requesters */}
+
                   {requesters.length > 0 && (
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       <p className="text-xs text-gray-600 dark:text-gray-400">Existing Requesters:</p>
@@ -437,7 +453,6 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
           </div>
         </div>
 
-        {/* Third Row - Dates & Time */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -460,12 +475,20 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
               value={newTask.estimated_hours}
               onChange={(e) => setNewTask({...newTask, estimated_hours: e.target.value})}
               placeholder="e.g., 1:30 or 0:45"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                newTask.estimated_hours && !validateTimeFormat(newTask.estimated_hours)
+                  ? 'border-red-300 dark:border-red-600'
+                  : 'border-gray-300 dark:border-gray-600'
+              }`}
             />
+            {newTask.estimated_hours && !validateTimeFormat(newTask.estimated_hours) && (
+              <p className="text-red-600 dark:text-red-400 text-xs mt-1">
+                Please use HH:MM format (e.g., 1:30, 0:45, 10:00)
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Description */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Description
@@ -494,7 +517,6 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
           )}
         </div>
 
-        {/* Submit Button */}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -515,6 +537,36 @@ const TaskCreationForm = ({ taskList, onTaskCreated, members, projects, requeste
       </form>
     </div>
   );
+};
+
+TaskCreationForm.propTypes = {
+  taskList: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired
+  }).isRequired,
+  onTaskCreated: PropTypes.func.isRequired,
+  members: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.number.isRequired,
+      name: PropTypes.string.isRequired
+    })
+  ).isRequired,
+  projects: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.number.isRequired,
+      name: PropTypes.string.isRequired
+    })
+  ).isRequired,
+  requesters: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.number.isRequired,
+      name: PropTypes.string.isRequired
+    })
+  ).isRequired,
+  onProjectAdded: PropTypes.func,
+  onProjectDeleted: PropTypes.func,
+  onRequesterAdded: PropTypes.func,
+  onRequesterDeleted: PropTypes.func
 };
 
 export default TaskCreationForm;

@@ -1,10 +1,8 @@
-// components/auth/LoginForm.jsx
 import React, { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Loader } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import DarkModeToggle from '../ui/DarkModeToggle';
 
-// Enhanced Login Form with Dark Mode
 const LoginForm = ({ onToggleMode }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,11 +13,13 @@ const LoginForm = ({ onToggleMode }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Basic validation before API call
     if (!email.trim() || !password.trim()) {
       setError('Please fill in all fields');
       return;
     }
-    
+
     setLoading(true);
     setError('');
 
