@@ -153,8 +153,8 @@ const schemas = {
     projectId: Joi.number().integer().allow(null),
     requesterId: Joi.number().integer().allow(null),
     assignedTo: Joi.alternatives().try(Joi.number().integer(), Joi.string()).allow(null),
-    dueDate: Joi.date().iso().allow(null).messages({
-      'date.format': 'Due date must be a valid date'
+    dueDate: Joi.string().isoDate().allow(null).messages({
+      'date.format': 'Please enter a valid date and time'
     }),
     estimatedHours: Joi.number().min(0).max(999.99).allow(null).messages({
       'number.min': 'Estimated hours cannot be negative',
@@ -176,6 +176,22 @@ const schemas = {
     }),
     description: Joi.string().max(1000).allow(null, '').messages({
       'string.max': 'Description must be less than 1000 characters'
+    })
+  }),
+
+  reminder: Joi.object({
+    reminderType: Joi.string().valid('predefined', 'custom').required().messages({
+      'any.only': 'Reminder type must be either predefined or custom',
+      'any.required': 'Reminder type is required'
+    }),
+    timeValue: Joi.number().integer().min(1).required().messages({
+      'number.base': 'Time value must be a number',
+      'number.min': 'Time value must be at least 1',
+      'any.required': 'Time value is required'
+    }),
+    timeUnit: Joi.string().valid('minutes', 'hours', 'days', 'weeks').required().messages({
+      'any.only': 'Time unit must be one of: minutes, hours, days, weeks',
+      'any.required': 'Time unit is required'
     })
   })
 };
@@ -343,7 +359,7 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
       type: sanitizeForLog(type),
       title: sanitizeForLog(title)
     });
-    
+
     const result = await pool.query(
       'INSERT INTO notifications (user_id, task_id, task_list_id, type, title, message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *',
       [userId, taskId, taskListId, type, title, message]
@@ -356,7 +372,7 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
         'SELECT name FROM task_lists WHERE id = $1',
         [taskListId]
       );
-      
+
       if (taskListResult.rows.length > 0) {
         notification.task_list_name = taskListResult.rows[0].name;
       }
@@ -368,6 +384,127 @@ const createNotification = async (userId, taskId, taskListId, type, title, messa
   } catch (error) {
     logger.error('Error creating notification', { error: sanitizeForLog(error.message) });
   }
+};
+
+// Reminder helper functions
+const calculateReminderDatetime = (dueDate, timeValue, timeUnit) => {
+  const due = new Date(dueDate);
+  const reminder = new Date(due);
+
+  switch (timeUnit) {
+    case 'minutes':
+      reminder.setMinutes(reminder.getMinutes() - timeValue);
+      break;
+    case 'hours':
+      reminder.setHours(reminder.getHours() - timeValue);
+      break;
+    case 'days':
+      reminder.setDate(reminder.getDate() - timeValue);
+      break;
+    case 'weeks':
+      reminder.setDate(reminder.getDate() - (timeValue * 7));
+      break;
+  }
+
+  return reminder;
+};
+
+const createTaskReminder = async (taskId, userId, reminderData) => {
+  const { reminderType, timeValue, timeUnit, reminderDatetime } = reminderData;
+
+  const result = await pool.query(
+    `INSERT INTO task_reminders (task_id, user_id, reminder_type, time_value, time_unit, reminder_datetime)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [taskId, userId, reminderType, timeValue, timeUnit, reminderDatetime]
+  );
+
+  return result.rows[0];
+};
+
+const getTaskReminders = async (taskId) => {
+  const result = await pool.query(
+    `SELECT * FROM task_reminders
+     WHERE task_id = $1
+     ORDER BY reminder_datetime ASC`,
+    [taskId]
+  );
+
+  return result.rows;
+};
+
+const deleteTaskReminder = async (reminderId, userId) => {
+  const result = await pool.query(
+    `DELETE FROM task_reminders
+     WHERE id = $1 AND user_id = $2
+     RETURNING id`,
+    [reminderId, userId]
+  );
+
+  return result.rowCount > 0;
+};
+
+const getPendingReminders = async () => {
+  const result = await pool.query(
+    `SELECT tr.*, t.name as task_name, t.due_date, t.task_list_id, tl.name as task_list_name
+     FROM task_reminders tr
+     JOIN tasks t ON tr.task_id = t.id
+     JOIN task_lists tl ON t.task_list_id = tl.id
+     WHERE tr.is_sent = false AND tr.reminder_datetime <= NOW()
+     ORDER BY tr.reminder_datetime ASC`
+  );
+
+  return result.rows;
+};
+
+const markReminderAsSent = async (reminderId) => {
+  await pool.query(
+    `UPDATE task_reminders
+     SET is_sent = true, sent_at = NOW()
+     WHERE id = $1`,
+    [reminderId]
+  );
+};
+
+const recalculateTaskReminders = async (taskId, newDueDate) => {
+  const reminders = await getTaskReminders(taskId);
+
+  for (const reminder of reminders) {
+    const newReminderDatetime = calculateReminderDatetime(newDueDate, reminder.time_value, reminder.time_unit);
+
+    if (newReminderDatetime < new Date()) {
+      await pool.query('DELETE FROM task_reminders WHERE id = $1', [reminder.id]);
+    } else {
+      await pool.query(
+        'UPDATE task_reminders SET reminder_datetime = $1 WHERE id = $2',
+        [newReminderDatetime, reminder.id]
+      );
+    }
+  }
+};
+
+const checkDuplicateReminder = async (taskId, userId, reminderDatetime) => {
+  const result = await pool.query(
+    `SELECT id FROM task_reminders
+     WHERE task_id = $1 AND user_id = $2 AND reminder_datetime = $3`,
+    [taskId, userId, reminderDatetime]
+  );
+
+  return result.rows.length > 0;
+};
+
+const getMissedReminders = async (userId) => {
+  const result = await pool.query(
+    `SELECT tr.*, t.name as task_name, t.due_date, t.task_list_id, tl.name as task_list_name
+     FROM task_reminders tr
+     JOIN tasks t ON tr.task_id = t.id
+     JOIN task_lists tl ON t.task_list_id = tl.id
+     WHERE tr.user_id = $1 AND tr.is_sent = true AND tr.sent_at > NOW() - INTERVAL '7 days'
+     ORDER BY tr.sent_at DESC`,
+    [userId]
+  );
+
+  return result.rows;
 };
 
 // Auth routes
@@ -838,7 +975,10 @@ app.get('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     const result = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
-             utq.queue_position
+             utq.queue_position,
+             (SELECT MIN(tr.reminder_datetime)
+              FROM task_reminders tr
+              WHERE tr.task_id = t.id AND tr.is_sent = false) as next_reminder_datetime
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
@@ -915,7 +1055,10 @@ app.post('/api/task-lists/:id/tasks', authenticateToken, async (req, res) => {
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
-             tl.name as task_list_name, utq.queue_position
+             tl.name as task_list_name, utq.queue_position,
+             (SELECT MIN(tr.reminder_datetime)
+              FROM task_reminders tr
+              WHERE tr.task_id = t.id AND tr.is_sent = false) as next_reminder_datetime
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
@@ -970,7 +1113,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     logger.debug('Task validation passed');
 
     const originalTaskResult = await pool.query(
-      'SELECT assigned_to, task_list_id FROM tasks WHERE id = $1',
+      'SELECT assigned_to, task_list_id, due_date, status FROM tasks WHERE id = $1',
       [id]
     );
 
@@ -1031,7 +1174,10 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     const taskResult = await pool.query(`
       SELECT t.*, p.name as project_name, r.name as requester_name,
              assigned_user.name as assigned_to_name, creator.name as created_by_name,
-             utq.queue_position
+             utq.queue_position,
+             (SELECT MIN(tr.reminder_datetime)
+              FROM task_reminders tr
+              WHERE tr.task_id = t.id AND tr.is_sent = false) as next_reminder_datetime
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN requesters r ON t.requester_id = r.id
@@ -1067,6 +1213,26 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
         }
       } catch (notifError) {
         logger.error('Error creating assignment notification', { error: sanitizeForLog(notifError.message) });
+      }
+    }
+
+    // Handle reminder updates
+    if (validUpdates.due_date && validUpdates.due_date !== originalTask.due_date) {
+      try {
+        await recalculateTaskReminders(id, validUpdates.due_date);
+        logger.debug('Reminders recalculated after due date change', { taskId: sanitizeForLog(id) });
+      } catch (reminderError) {
+        logger.error('Error recalculating reminders', { error: sanitizeForLog(reminderError.message) });
+      }
+    }
+
+    // Delete unsent reminders if task is marked as completed
+    if (validUpdates.status === true && originalTask.status === false) {
+      try {
+        await pool.query('DELETE FROM task_reminders WHERE task_id = $1 AND is_sent = false', [id]);
+        logger.debug('Deleted unsent reminders for completed task', { taskId: sanitizeForLog(id) });
+      } catch (reminderError) {
+        logger.error('Error deleting reminders for completed task', { error: sanitizeForLog(reminderError.message) });
       }
     }
 
@@ -1119,6 +1285,114 @@ app.delete('/api/tasks/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Delete task error', { error: sanitizeForLog(error.message) });
     res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
+// Reminder routes
+app.post('/api/tasks/:id/reminders', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reminders = Array.isArray(req.body) ? req.body : [req.body];
+
+    const taskResult = await pool.query('SELECT due_date, task_list_id FROM tasks WHERE id = $1', [id]);
+
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const task = taskResult.rows[0];
+
+    if (!task.due_date) {
+      return res.status(400).json({ error: 'Cannot set reminders on tasks without a due date' });
+    }
+
+    const createdReminders = [];
+
+    for (const reminderData of reminders) {
+      const { error, value } = schemas.reminder.validate(reminderData);
+
+      if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+      }
+
+      const { reminderType, timeValue, timeUnit } = value;
+      const reminderDatetime = calculateReminderDatetime(task.due_date, timeValue, timeUnit);
+
+      if (reminderDatetime < new Date()) {
+        return res.status(400).json({ error: 'Reminder time cannot be in the past' });
+      }
+
+      const isDuplicate = await checkDuplicateReminder(id, req.user.userId, reminderDatetime);
+
+      if (isDuplicate) {
+        return res.status(400).json({ error: 'A reminder already exists for this time' });
+      }
+
+      const reminder = await createTaskReminder(id, req.user.userId, {
+        reminderType,
+        timeValue,
+        timeUnit,
+        reminderDatetime
+      });
+
+      createdReminders.push(reminder);
+    }
+
+    logger.info('Reminders created', {
+      taskId: sanitizeForLog(id),
+      count: createdReminders.length
+    });
+
+    res.status(201).json(createdReminders);
+  } catch (error) {
+    logger.error('Create reminder error', { error: sanitizeForLog(error.message) });
+    res.status(500).json({ error: 'Failed to create reminder' });
+  }
+});
+
+app.get('/api/tasks/:id/reminders', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const reminders = await getTaskReminders(id);
+
+    res.json(reminders);
+  } catch (error) {
+    logger.error('Get reminders error', { error: sanitizeForLog(error.message) });
+    res.status(500).json({ error: 'Failed to fetch reminders' });
+  }
+});
+
+app.delete('/api/tasks/:taskId/reminders/:reminderId', authenticateToken, async (req, res) => {
+  try {
+    const { taskId, reminderId } = req.params;
+
+    const deleted = await deleteTaskReminder(reminderId, req.user.userId);
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Reminder not found or unauthorized' });
+    }
+
+    logger.info('Reminder deleted', {
+      reminderId: sanitizeForLog(reminderId),
+      taskId: sanitizeForLog(taskId)
+    });
+
+    res.json({ message: 'Reminder deleted successfully' });
+  } catch (error) {
+    logger.error('Delete reminder error', { error: sanitizeForLog(error.message) });
+    res.status(500).json({ error: 'Failed to delete reminder' });
+  }
+});
+
+app.get('/api/reminders/missed', authenticateToken, async (req, res) => {
+  try {
+    const missedReminders = await getMissedReminders(req.user.userId);
+
+    res.json(missedReminders);
+  } catch (error) {
+    logger.error('Get missed reminders error', { error: sanitizeForLog(error.message) });
+    res.status(500).json({ error: 'Failed to fetch missed reminders' });
   }
 });
 
@@ -1549,6 +1823,54 @@ cron.schedule('0 3 * * *', async () => {
     logger.debug('Database keep-alive ping successful');
   } catch (error) {
     logger.error('Database keep-alive ping failed', { error: sanitizeForLog(error.message) });
+  }
+});
+
+// Reminder scheduler (runs every minute)
+cron.schedule('* * * * *', async () => {
+  try {
+    const pendingReminders = await getPendingReminders();
+
+    if (pendingReminders.length > 0) {
+      logger.info('Processing pending reminders', { count: pendingReminders.length });
+    }
+
+    for (const reminder of pendingReminders) {
+      try {
+        const dueDate = new Date(reminder.due_date);
+        const formattedDueDate = dueDate.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        await createNotification(
+          reminder.user_id,
+          reminder.task_id,
+          reminder.task_list_id,
+          'task_reminder',
+          `Reminder: ${reminder.task_name}`,
+          `Due ${formattedDueDate}`
+        );
+
+        await markReminderAsSent(reminder.id);
+
+        logger.debug('Reminder processed and sent', {
+          reminderId: sanitizeForLog(reminder.id),
+          taskId: sanitizeForLog(reminder.task_id),
+          userId: sanitizeForLog(reminder.user_id)
+        });
+      } catch (reminderError) {
+        logger.error('Error processing individual reminder', {
+          reminderId: sanitizeForLog(reminder.id),
+          error: sanitizeForLog(reminderError.message)
+        });
+      }
+    }
+  } catch (error) {
+    logger.error('Reminder scheduler error', { error: sanitizeForLog(error.message) });
   }
 });
 

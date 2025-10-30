@@ -1,10 +1,37 @@
-import React, { useState } from 'react';
-import { Bell, X, CheckCheck, Loader } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bell, X, CheckCheck, Loader, AlertCircle } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
+import { useAuth } from '../../hooks/useAuth';
+import { formatDatetime } from '../../utils/dateUtils';
 
 const NotificationBell = ({ onNavigateToTask }) => {
+  const { api } = useAuth();
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead, clearNotification, clearAllNotifications } = useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [missedReminders, setMissedReminders] = useState([]);
+  const [missedLoading, setMissedLoading] = useState(false);
+
+  useEffect(() => {
+    if (showDropdown) {
+      loadMissedReminders();
+    }
+  }, [showDropdown]);
+
+  const loadMissedReminders = async () => {
+    try {
+      setMissedLoading(true);
+      const data = await api.getMissedReminders();
+      setMissedReminders(data);
+    } catch (err) {
+      console.error('Failed to load missed reminders:', err);
+    } finally {
+      setMissedLoading(false);
+    }
+  };
+
+  const handleDismissMissedReminder = (reminderId) => {
+    setMissedReminders(prev => prev.filter(r => r.id !== reminderId));
+  };
 
   const formatTimeAgo = (dateString) => {
     const now = new Date();
@@ -114,6 +141,99 @@ const NotificationBell = ({ onNavigateToTask }) => {
                 )}
               </div>
             </div>
+
+            {/* Missed Reminders Section */}
+            {missedReminders.length > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border-b-2 border-amber-200 dark:border-amber-700">
+                <div className="p-3 flex items-center justify-between bg-amber-100 dark:bg-amber-900/30">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      Missed Reminders ({missedReminders.length})
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setMissedReminders([])}
+                    className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                  >
+                    Dismiss all
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  {missedReminders.map((reminder) => (
+                    <div
+                      key={reminder.id}
+                      className="p-3 border-b border-amber-200 dark:border-amber-700 last:border-b-0 hover:bg-amber-100/50 dark:hover:bg-amber-900/40 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => {
+                            handleDismissMissedReminder(reminder.id);
+                            setShowDropdown(false);
+                            if (onNavigateToTask && reminder.task_id && reminder.task_list_id) {
+                              onNavigateToTask(reminder.task_list_id, reminder.task_id);
+                            } else {
+                              const event = new CustomEvent('highlightTask', {
+                                detail: {
+                                  taskId: reminder.task_id,
+                                  taskListId: reminder.task_list_id
+                                }
+                              });
+                              window.dispatchEvent(event);
+
+                              setTimeout(() => {
+                                const taskElement = document.querySelector(`[data-task-id="${reminder.task_id}"]`);
+                                if (taskElement) {
+                                  taskElement.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'center'
+                                  });
+                                  taskElement.classList.add('notification-highlight');
+                                  setTimeout(() => {
+                                    taskElement.classList.remove('notification-highlight');
+                                  }, 3000);
+                                }
+                              }, 100);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Bell className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                            <h4 className="font-medium text-sm text-amber-900 dark:text-amber-200 truncate">
+                              {reminder.task_name}
+                            </h4>
+                          </div>
+                          <p className="text-xs text-amber-700 dark:text-amber-300 mb-1">
+                            Due: {formatDatetime(reminder.due_date)}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-amber-600 dark:text-amber-400">
+                              Reminded {formatTimeAgo(reminder.sent_at)}
+                            </span>
+                            {reminder.task_list_name && (
+                              <span className="text-xs bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded">
+                                {reminder.task_list_name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismissMissedReminder(reminder.id);
+                          }}
+                          className="p-1 text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 transition-colors"
+                          title="Dismiss reminder"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="max-h-80 overflow-y-auto">
               {loading ? (

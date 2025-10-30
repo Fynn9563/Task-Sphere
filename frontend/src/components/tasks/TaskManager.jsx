@@ -164,6 +164,12 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             comparison = (aDate - bDate) * direction;
             break;
           }
+          case 'reminder': {
+            const aReminder = a.next_reminder_datetime ? new Date(a.next_reminder_datetime).getTime() : Infinity;
+            const bReminder = b.next_reminder_datetime ? new Date(b.next_reminder_datetime).getTime() : Infinity;
+            comparison = (aReminder - bReminder) * direction;
+            break;
+          }
           case 'createdAt': {
             const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
             const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -576,6 +582,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
                 <option value="project">Project</option>
                 <option value="assignedTo">Assigned To</option>
                 <option value="dueDate">Due Date</option>
+                <option value="reminder">Reminder (Next)</option>
                 <option value="createdAt">Created Date</option>
               </select>
             </div>

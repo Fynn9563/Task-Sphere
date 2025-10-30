@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus } from 'lucide-react';
+import { Check, X, Edit3, Trash2, User, Calendar, Clock, Loader, Save, ListPlus, Bell } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText } from '../../utils/validation';
+import { formatDatetime } from '../../utils/dateUtils';
+import { useAuth } from '../../hooks/useAuth';
+import ReminderManager from './ReminderManager';
+import DateTimePicker from '../ui/DateTimePicker';
+import TimePicker from '../ui/TimePicker';
 
 // Format hours to readable time
 const formatEstimatedHours = (hours) => {
@@ -45,8 +50,11 @@ const timeStringToHours = (timeString) => {
 };
 
 const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects, requesters, onAddToQueue, onRemoveFromQueue }) => {
+  const { api } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
+  const [showReminderManager, setShowReminderManager] = useState(false);
+  const [reminderCount, setReminderCount] = useState(0);
   const [editData, setEditData] = useState({
     name: task.name || '',
     description: task.description || '',
@@ -165,8 +173,26 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
 
   const formatDate = (dateString) => {
     if (!dateString) return null;
-    return new Date(dateString).toLocaleDateString();
+    return formatDatetime(dateString);
   };
+
+  useEffect(() => {
+    const fetchReminderCount = async () => {
+      if (!task.id || !task.due_date) {
+        setReminderCount(0);
+        return;
+      }
+
+      try {
+        const reminders = await api.getTaskReminders(task.id);
+        setReminderCount(reminders.length);
+      } catch (err) {
+        console.error('Failed to fetch reminder count:', err);
+      }
+    };
+
+    fetchReminderCount();
+  }, [task.id, task.due_date, api]);
 
   return (
     <div 
@@ -248,6 +274,19 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
         </div>
 
         <div className="flex items-center gap-2 ml-4">
+          <button
+            onClick={() => setShowReminderManager(true)}
+            className="p-2 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/70 transition-colors relative"
+            title="Manage reminders"
+          >
+            <Bell className="w-4 h-4" />
+            {reminderCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium">
+                {reminderCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setIsEditing(!isEditing)}
             className="p-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -432,14 +471,14 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Due Date
+                Due Date & Time
               </label>
-              <input
-                type="date"
+              <DateTimePicker
                 value={editData.due_date}
-                onChange={(e) => setEditData({...editData, due_date: e.target.value})}
+                onChange={(isoDate) => setEditData({...editData, due_date: isoDate})}
                 disabled={updateLoading}
-                className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
+                placeholder="Select date and time"
+                className="px-2 py-1 text-sm"
               />
             </div>
             
@@ -447,18 +486,15 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Estimated Time
               </label>
-              <input
-                type="text"
+              <TimePicker
                 value={editData.estimated_hours}
-                onChange={(e) => {
-                  setEditData({...editData, estimated_hours: e.target.value});
+                onChange={(hours) => {
+                  setEditData({...editData, estimated_hours: hours});
                   if (editErrors.estimated_hours) setEditErrors({...editErrors, estimated_hours: ''});
                 }}
                 disabled={updateLoading}
-                placeholder="e.g., 1:30 or 0:45"
-                className={`w-full px-2 py-1 text-sm border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${
-                  editErrors.estimated_hours ? 'border-red-300 dark:border-red-600' : 'border-gray-300 dark:border-gray-600'
-                }`}
+                placeholder="Select duration"
+                className="px-2 py-1 text-sm"
               />
               {editErrors.estimated_hours && (
                 <p className="text-red-600 dark:text-red-400 text-xs mt-1">{editErrors.estimated_hours}</p>
@@ -506,6 +542,25 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
             </button>
           </div>
         </div>
+      )}
+
+      {showReminderManager && (
+        <ReminderManager
+          taskId={task.id}
+          dueDate={task.due_date}
+          onClose={() => {
+            setShowReminderManager(false);
+            const fetchReminderCount = async () => {
+              try {
+                const reminders = await api.getTaskReminders(task.id);
+                setReminderCount(reminders.length);
+              } catch (err) {
+                console.error('Failed to refresh reminder count:', err);
+              }
+            };
+            fetchReminderCount();
+          }}
+        />
       )}
     </div>
   );

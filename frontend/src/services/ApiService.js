@@ -393,4 +393,26 @@ export class ApiService {
       method: 'DELETE',
     });
   }
+
+  // Reminder methods
+  async createTaskReminders(taskId, reminders) {
+    return this.request(`/tasks/${taskId}/reminders`, {
+      method: 'POST',
+      body: reminders,
+    });
+  }
+
+  async getTaskReminders(taskId) {
+    return this.request(`/tasks/${taskId}/reminders`);
+  }
+
+  async deleteTaskReminder(taskId, reminderId) {
+    return this.request(`/tasks/${taskId}/reminders/${reminderId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getMissedReminders() {
+    return this.request('/reminders/missed');
+  }
 }

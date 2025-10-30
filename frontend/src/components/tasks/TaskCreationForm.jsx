@@ -4,6 +4,8 @@ import { Plus, Loader, AlertCircle, Trash2 } from 'lucide-react';
 import { validateName, validateDescription, cleanDisplayText, validateTimeFormat } from '../../utils/validation';
 import { useAuth } from '../../hooks/useAuth';
 import SearchableCombobox from '../ui/SearchableCombobox';
+import DateTimePicker from '../ui/DateTimePicker';
+import TimePicker from '../ui/TimePicker';
 
 // Convert HH:MM string to decimal hours
 const timeStringToHours = (timeString) => {
@@ -102,7 +104,7 @@ const TaskCreationForm = ({
         assignedTo: newTask.assigned_to === "" ? null : parseInt(newTask.assigned_to) || null,
         priority: newTask.priority,
         dueDate: newTask.due_date || null,
-        estimatedHours: timeStringToHours(newTask.estimated_hours),
+        estimatedHours: newTask.estimated_hours || null,
       };
 
       console.log('Creating task with data:', taskData);
@@ -456,13 +458,12 @@ const TaskCreationForm = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Due Date
+              Due Date & Time
             </label>
-            <input
-              type="date"
+            <DateTimePicker
               value={newTask.due_date}
-              onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(isoDate) => setNewTask({...newTask, due_date: isoDate})}
+              placeholder="Select date and time"
             />
           </div>
           
@@ -470,22 +471,11 @@ const TaskCreationForm = ({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Estimated Time
             </label>
-            <input
-              type="text"
+            <TimePicker
               value={newTask.estimated_hours}
-              onChange={(e) => setNewTask({...newTask, estimated_hours: e.target.value})}
-              placeholder="e.g., 1:30 or 0:45"
-              className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                newTask.estimated_hours && !validateTimeFormat(newTask.estimated_hours)
-                  ? 'border-red-300 dark:border-red-600'
-                  : 'border-gray-300 dark:border-gray-600'
-              }`}
+              onChange={(hours) => setNewTask({...newTask, estimated_hours: hours})}
+              placeholder="Select duration"
             />
-            {newTask.estimated_hours && !validateTimeFormat(newTask.estimated_hours) && (
-              <p className="text-red-600 dark:text-red-400 text-xs mt-1">
-                Please use HH:MM format (e.g., 1:30, 0:45, 10:00)
-              </p>
-            )}
           </div>
         </div>
 

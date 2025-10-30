@@ -24,11 +24,46 @@ export const NotificationProvider = ({ children }) => {
         setNotifications(prev => [notification, ...prev]);
         setUnreadCount(prev => prev + 1);
 
-        if (Notification.permission === 'granted') {
-          new Notification(notification.title, {
+        // Show browser notification if permission granted and (window not focused OR it's a reminder)
+        const shouldShowBrowserNotif = Notification.permission === 'granted' &&
+          (!document.hasFocus() || notification.type === 'task_reminder');
+
+        if (shouldShowBrowserNotif) {
+          const browserNotif = new Notification(notification.title, {
             body: notification.message,
-            icon: '/favicon.ico'
+            icon: '/favicon.ico',
+            tag: `notification-${notification.id}`,
+            requireInteraction: notification.type === 'task_reminder'
           });
+
+          browserNotif.onclick = () => {
+            window.focus();
+            browserNotif.close();
+
+            if (notification.task_id && notification.task_list_id) {
+              const event = new CustomEvent('highlightTask', {
+                detail: {
+                  taskId: notification.task_id,
+                  taskListId: notification.task_list_id
+                }
+              });
+              window.dispatchEvent(event);
+
+              setTimeout(() => {
+                const taskElement = document.querySelector(`[data-task-id="${notification.task_id}"]`);
+                if (taskElement) {
+                  taskElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                  });
+                  taskElement.classList.add('notification-highlight');
+                  setTimeout(() => {
+                    taskElement.classList.remove('notification-highlight');
+                  }, 3000);
+                }
+              }, 100);
+            }
+          };
         }
       });
       

@@ -51,6 +51,10 @@ pnpm-debug.log\*
 
 backup/
 
+# Database migrations
+
+backend/migrations/
+
 # OS and Editor files
 
 .DS\_Store

@@ -1,0 +1,123 @@
+/* React DatePicker Dark Mode Styles */
+
+.dark .react-datepicker-popper {
+  z-index: 9999;
+}
+
+.dark .react-datepicker {
+  background-color: rgb(31 41 55) !important;
+  border-color: rgb(55 65 81) !important;
+  color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__header {
+  background-color: rgb(17 24 39) !important;
+  border-bottom-color: rgb(55 65 81) !important;
+}
+
+.dark .react-datepicker__current-month,
+.dark .react-datepicker-time__header,
+.dark .react-datepicker__day-name {
+  color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__day {
+  color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__day:hover {
+  background-color: rgb(55 65 81) !important;
+}
+
+.dark .react-datepicker__day--selected,
+.dark .react-datepicker__day--keyboard-selected {
+  background-color: rgb(37 99 235);
+  color: white;
+}
+
+.dark .react-datepicker__day--selected:hover,
+.dark .react-datepicker__day--keyboard-selected:hover {
+  background-color: rgb(29 78 216);
+}
+
+.dark .react-datepicker__day--disabled {
+  color: rgb(107 114 128) !important;
+}
+
+.dark .react-datepicker__day--disabled:hover {
+  background-color: transparent !important;
+  cursor: not-allowed;
+}
+
+.dark .react-datepicker__day--outside-month {
+  color: rgb(107 114 128) !important;
+}
+
+.dark .react-datepicker__triangle {
+  border-bottom-color: rgb(17 24 39) !important;
+}
+
+.dark .react-datepicker__triangle::before {
+  border-bottom-color: rgb(55 65 81) !important;
+}
+
+.dark .react-datepicker__navigation-icon::before {
+  border-color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__navigation:hover *::before {
+  border-color: rgb(209 213 219) !important;
+}
+
+.dark .react-datepicker__time-container {
+  border-left-color: rgb(55 65 81) !important;
+}
+
+.dark .react-datepicker__time {
+  background-color: rgb(31 41 55) !important;
+}
+
+.dark .react-datepicker__time-list-item {
+  color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__time-list-item:hover {
+  background-color: rgb(55 65 81) !important;
+}
+
+.dark .react-datepicker__time-list-item--selected {
+  background-color: rgb(37 99 235) !important;
+  color: white !important;
+}
+
+.dark .react-datepicker__time-list-item--selected:hover {
+  background-color: rgb(29 78 216) !important;
+}
+
+.dark .react-datepicker__time-list-item--disabled {
+  color: rgb(107 114 128) !important;
+}
+
+.dark .react-datepicker__time-list-item--disabled:hover {
+  background-color: transparent !important;
+  cursor: not-allowed;
+}
+
+.dark .react-datepicker__today-button {
+  background-color: rgb(17 24 39) !important;
+  border-top-color: rgb(55 65 81) !important;
+  color: rgb(243 244 246) !important;
+}
+
+.dark .react-datepicker__today-button:hover {
+  background-color: rgb(31 41 55) !important;
+}
+
+/* Light mode styles - use react-datepicker defaults, just ensure input width */
+.react-datepicker {
+  font-family: inherit;
+}
+
+.react-datepicker__input-container input {
+  width: 100%;
+}
