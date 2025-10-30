@@ -415,4 +415,23 @@ export class ApiService {
   async getMissedReminders() {
     return this.request('/reminders/missed');
   }
+
+  // User profile methods
+  async getUserProfile() {
+    return this.request('/user/profile');
+  }
+
+  async updateUserProfile(updates) {
+    return this.request('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async changePassword(currentPassword, newPassword) {
+    return this.request('/user/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
 }

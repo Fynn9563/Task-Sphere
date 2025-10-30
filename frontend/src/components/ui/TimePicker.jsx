@@ -1,59 +1,73 @@
 import { forwardRef } from 'react';
-import ReactDatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 
-// Convert decimal hours to Date object (for today's date with the specified time)
-const hoursToDate = (hours) => {
-  if (!hours) return null;
+// Format decimal hours to readable string
+const formatDuration = (hours) => {
+  if (!hours || hours === 0) return '';
 
   const totalMinutes = Math.round(hours * 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
 
-  const date = new Date();
-  date.setHours(h, m, 0, 0);
-  return date;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} hr`;
+  return `${h} hr ${m} min`;
 };
 
-// Convert Date object to decimal hours
-const dateToHours = (date) => {
-  if (!date) return null;
+// Generate duration options
+const generateDurationOptions = () => {
+  const options = [];
 
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  // 15 min, 30 min, 45 min
+  options.push({ value: 0.25, label: '15 min' });
+  options.push({ value: 0.5, label: '30 min' });
+  options.push({ value: 0.75, label: '45 min' });
 
-  return hours + (minutes / 60);
+  // 1 hour to 8 hours (every hour)
+  for (let i = 1; i <= 8; i++) {
+    options.push({ value: i, label: `${i} hr` });
+  }
+
+  // 1.5 to 7.5 hours (every 30 min)
+  for (let i = 1.5; i <= 7.5; i += 1) {
+    options.push({ value: i, label: `${Math.floor(i)} hr 30 min` });
+  }
+
+  // 10, 12, 16, 20, 24, 32, 40 hours
+  [10, 12, 16, 20, 24, 32, 40].forEach(h => {
+    options.push({ value: h, label: `${h} hr` });
+  });
+
+  // Sort by value
+  options.sort((a, b) => a.value - b.value);
+
+  return options;
 };
 
 const TimePicker = forwardRef(({ value, onChange, placeholder, disabled, className }, ref) => {
-  const handleChange = (date) => {
+  const options = generateDurationOptions();
+
+  const handleChange = (e) => {
+    const selectedValue = e.target.value === '' ? null : parseFloat(e.target.value);
     if (onChange) {
-      // Convert Date object to decimal hours
-      onChange(dateToHours(date));
+      onChange(selectedValue);
     }
   };
 
-  // Convert decimal hours to Date object for the picker
-  const dateValue = hoursToDate(value);
-
   return (
-    <ReactDatePicker
+    <select
       ref={ref}
-      selected={dateValue}
+      value={value || ''}
       onChange={handleChange}
-      showTimeSelect
-      showTimeSelectOnly
-      timeFormat="HH:mm"
-      timeIntervals={15}
-      dateFormat="HH:mm"
-      placeholderText={placeholder || 'Select duration'}
       disabled={disabled}
       className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${className || ''}`}
-      calendarClassName="dark:bg-gray-800 dark:border-gray-700"
-      wrapperClassName="w-full"
-      popperClassName="react-datepicker-popper-dark"
-      timeCaption="Duration"
-    />
+    >
+      <option value="">{placeholder || 'Select duration'}</option>
+      {options.map(option => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 });
 

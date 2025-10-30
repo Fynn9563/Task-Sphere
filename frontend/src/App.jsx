@@ -8,11 +8,13 @@ import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import TaskListSelector from './components/ui/TaskListSelector';
 import TaskManager from './components/tasks/TaskManager';
+import Profile from './pages/Profile';
 
 const TaskSphere = () => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [selectedTaskList, setSelectedTaskList] = useState(null);
   const [initialTaskId, setInitialTaskId] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
   const { user, loading, saveSessionState, restoreSessionState } = useAuth();
 
   // Save current state before logout
@@ -27,6 +29,7 @@ const TaskSphere = () => {
     if (!user) {
       setSelectedTaskList(null);
       setInitialTaskId(null);
+      setShowProfile(false);
       setIsLoginMode(true);
     }
   }, [user]);
@@ -69,31 +72,49 @@ const TaskSphere = () => {
     );
   }
 
+  if (showProfile) {
+    return <Profile onBack={() => setShowProfile(false)} />;
+  }
+
   if (selectedTaskList) {
     return (
-      <TaskManager 
-        taskList={selectedTaskList} 
+      <TaskManager
+        taskList={selectedTaskList}
         onBack={handleBackToTaskLists}
         initialTaskId={initialTaskId}
+        onOpenProfile={() => setShowProfile(true)}
       />
     );
   }
 
   return (
-    <TaskListSelector onSelectTaskList={handleSelectTaskList} />
+    <TaskListSelector
+      onSelectTaskList={handleSelectTaskList}
+      onOpenProfile={() => setShowProfile(true)}
+    />
+  );
+};
+
+// Wrapper to pass auth context to DarkModeProvider
+const DarkModeWrapper = ({ children }) => {
+  const { api, isAuthenticated } = useAuth();
+  return (
+    <DarkModeProvider api={api} isAuthenticated={isAuthenticated}>
+      {children}
+    </DarkModeProvider>
   );
 };
 
 // Root App with Providers
 const App = () => {
   return (
-    <DarkModeProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <DarkModeWrapper>
         <NotificationProvider>
           <TaskSphere />
         </NotificationProvider>
-      </AuthProvider>
-    </DarkModeProvider>
+      </DarkModeWrapper>
+    </AuthProvider>
   );
 };
 

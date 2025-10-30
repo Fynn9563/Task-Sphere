@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Trash2, LogOut, Loader, AlertCircle } from 'lucide-react';
+import { Plus, Users, Trash2, LogOut, Loader, AlertCircle, UserCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { cleanDisplayText } from '../../utils/validation';
 import DarkModeToggle from './DarkModeToggle';
 import NotificationBell from './NotificationBell';
 
-const TaskListSelector = ({ onSelectTaskList }) => {
+const TaskListSelector = ({ onSelectTaskList, onOpenProfile }) => {
   const [taskLists, setTaskLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
@@ -157,6 +157,16 @@ const TaskListSelector = ({ onSelectTaskList }) => {
           <div className="flex items-center gap-2">
             <DarkModeToggle />
             <NotificationBell onNavigateToTask={handleNavigateToTask} />
+            {onOpenProfile && (
+              <button
+                onClick={onOpenProfile}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Profile Settings"
+              >
+                <UserCircle className="w-4 h-4" />
+                Profile
+              </button>
+            )}
             <button
               onClick={logout}
               className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"

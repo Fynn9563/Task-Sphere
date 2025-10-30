@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import ReminderManager from './ReminderManager';
 import DateTimePicker from '../ui/DateTimePicker';
 import TimePicker from '../ui/TimePicker';
+import { getAvatarUrl } from '../../utils/gravatar';
 
 // Format hours to readable time
 const formatEstimatedHours = (hours) => {
@@ -37,6 +38,9 @@ const hoursToTimeString = (hours) => {
 // HH:MM to decimal hours
 const timeStringToHours = (timeString) => {
   if (!timeString || timeString === '') return null;
+
+  // Ensure timeString is actually a string
+  if (typeof timeString !== 'string') return null;
 
   const parts = timeString.split(':');
   if (parts.length !== 2) return null;
@@ -96,7 +100,11 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
     }
     
     if (editData.estimated_hours) {
-      const hours = timeStringToHours(editData.estimated_hours);
+      // Handle both string format (from input) and number format (from TimePicker)
+      const hours = typeof editData.estimated_hours === 'number'
+        ? editData.estimated_hours
+        : timeStringToHours(editData.estimated_hours);
+
       if (hours === null) {
         errors.estimated_hours = 'Invalid time format. Use H:MM (e.g., 1:30 for 1 hour 30 minutes)';
       } else if (hours > 999.99) {
@@ -234,7 +242,15 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           <div className="flex flex-wrap items-center gap-2 text-sm">
             {task.assigned_to_name && (
               <span className="bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 px-2 py-1 rounded-full flex items-center gap-1">
-                <User className="w-3 h-3" />
+                {task.assigned_to_email ? (
+                  <img
+                    src={getAvatarUrl(task.assigned_to_email, task.assigned_to_avatar_url, 24)}
+                    alt={task.assigned_to_name}
+                    className="w-5 h-5 rounded-full border border-purple-300 dark:border-purple-600"
+                  />
+                ) : (
+                  <User className="w-3 h-3" />
+                )}
                 {cleanDisplayText(task.assigned_to_name)}
               </span>
             )}
@@ -274,18 +290,20 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
         </div>
 
         <div className="flex items-center gap-2 ml-4">
-          <button
-            onClick={() => setShowReminderManager(true)}
-            className="p-2 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/70 transition-colors relative"
-            title="Manage reminders"
-          >
-            <Bell className="w-4 h-4" />
-            {reminderCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium">
-                {reminderCount}
-              </span>
-            )}
-          </button>
+          {task.due_date && (
+            <button
+              onClick={() => setShowReminderManager(true)}
+              className="p-2 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/70 transition-colors relative"
+              title="Manage reminders"
+            >
+              <Bell className="w-4 h-4" />
+              {reminderCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium">
+                  {reminderCount}
+                </span>
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => setIsEditing(!isEditing)}
@@ -471,7 +489,7 @@ const TaskCard = ({ task, onToggleStatus, onDelete, onUpdate, members, projects,
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Due Date & Time
+                Start Date & Time
               </label>
               <DateTimePicker
                 value={editData.due_date}
@@ -581,6 +599,8 @@ TaskCard.propTypes = {
     requester_name: PropTypes.string,
     assigned_to: PropTypes.number,
     assigned_to_name: PropTypes.string,
+    assigned_to_email: PropTypes.string,
+    assigned_to_avatar_url: PropTypes.string,
     queue_position: PropTypes.number
   }).isRequired,
   onToggleStatus: PropTypes.func.isRequired,

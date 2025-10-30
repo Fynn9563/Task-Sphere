@@ -285,9 +285,12 @@ const TaskCreationForm = ({
               const member = members.find(m => m.name === value);
               setNewTask({...newTask, assigned_to: member ? member.id.toString() : ''});
             }}
-            options={members.map(m => ({ id: m.id, name: m.name }))}
+            options={members.map(m => ({ id: m.id, name: m.name, email: m.email, avatar_url: m.avatar_url }))}
             placeholder="Unassigned"
             displayValue={(option) => option?.name || 'Unassigned'}
+            showAvatar={true}
+            getAvatarEmail={(member) => member.email}
+            getAvatarCustomUrl={(member) => member.avatar_url}
           />
           
           <div>
@@ -458,7 +461,7 @@ const TaskCreationForm = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Due Date & Time
+              Start Date & Time
             </label>
             <DateTimePicker
               value={newTask.due_date}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered, ArrowUpDown } from 'lucide-react';
+import { Search, Share2, LogOut, Loader, ListChecks, ListOrdered, ArrowUpDown, UserCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { WebSocketService } from '../../services/WebSocketService';
 import DarkModeToggle from '../ui/DarkModeToggle';
@@ -10,7 +10,7 @@ import TaskCreationForm from './TaskCreationForm';
 import TaskCard from './TaskCard';
 import MyQueueView from './MyQueueView';
 
-const TaskManager = ({ taskList, onBack, initialTaskId }) => {
+const TaskManager = ({ taskList, onBack, initialTaskId, onOpenProfile }) => {
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -23,7 +23,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
     assignedTo: 'All',
     priority: 'All',
     sortBy: 'id',
-    sortDirection: 'asc'
+    sortDirection: 'desc'
   });
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -414,7 +414,18 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
               
               <DarkModeToggle />
               <NotificationBell />
-              
+
+              {onOpenProfile && (
+                <button
+                  onClick={onOpenProfile}
+                  className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  title="Profile Settings"
+                >
+                  <UserCircle className="w-4 h-4" />
+                  Profile
+                </button>
+              )}
+
               <button
                 onClick={logout}
                 className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -558,7 +569,7 @@ const TaskManager = ({ taskList, onBack, initialTaskId }) => {
             <div className="flex items-end">
               <button
                 onClick={() => setFilters({
-                  search: '', requester: 'All', project: 'All', assignedTo: 'All', priority: 'All', sortBy: 'id', sortDirection: 'asc'
+                  search: '', requester: 'All', project: 'All', assignedTo: 'All', priority: 'All', sortBy: 'id', sortDirection: 'desc'
                 })}
                 className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >

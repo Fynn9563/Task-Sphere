@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { Combobox } from '@headlessui/react';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import Fuse from 'fuse.js';
+import { getAvatarUrl } from '../../utils/gravatar';
 
 const SearchableCombobox = ({
   label,
@@ -10,7 +11,10 @@ const SearchableCombobox = ({
   onChange,
   options,
   placeholder = 'Search or select...',
-  displayValue
+  displayValue,
+  showAvatar = false,
+  getAvatarEmail = null,
+  getAvatarCustomUrl = null
 }) => {
   const [query, setQuery] = useState('');
 
@@ -92,40 +96,54 @@ const SearchableCombobox = ({
               <>
                 {filteredOptions
                   .filter(option => option.name && option.name.trim() !== '') // Filter out empty options
-                  .map((option) => (
-                    <Combobox.Option
-                      key={option.id}
-                      value={option.name}
-                      className={({ active }) =>
-                        `relative cursor-pointer select-none py-2 pl-10 pr-4 ${
-                          active
-                            ? 'bg-blue-600 text-white'
-                            : 'text-gray-900 dark:text-white'
-                        }`
-                      }
-                    >
-                      {({ selected, active }) => (
-                        <>
-                          <span
-                            className={`block truncate ${
-                              selected ? 'font-medium' : 'font-normal'
-                            }`}
-                          >
-                            {option.name}
-                          </span>
-                          {selected && (
+                  .map((option) => {
+                    const avatarEmail = showAvatar && getAvatarEmail ? getAvatarEmail(option) : null;
+                    const customAvatarUrl = showAvatar && getAvatarCustomUrl ? getAvatarCustomUrl(option) : null;
+                    const avatarUrl = avatarEmail ? getAvatarUrl(avatarEmail, customAvatarUrl, 32) : null;
+
+                    return (
+                      <Combobox.Option
+                        key={option.id}
+                        value={option.name}
+                        className={({ active }) =>
+                          `relative cursor-pointer select-none py-2 ${showAvatar ? 'pl-12' : 'pl-10'} pr-4 ${
+                            active
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-900 dark:text-white'
+                          }`
+                        }
+                      >
+                        {({ selected, active }) => (
+                          <>
+                            {showAvatar && avatarUrl ? (
+                              <img
+                                src={avatarUrl}
+                                alt={option.name}
+                                className="absolute inset-y-0 left-2 my-auto w-8 h-8 rounded-full border border-gray-300 dark:border-gray-600"
+                              />
+                            ) : (
+                              selected && (
+                                <span
+                                  className={`absolute inset-y-0 left-0 flex items-center pl-3 ${
+                                    active ? 'text-white' : 'text-blue-600'
+                                  }`}
+                                >
+                                  <Check className="w-4 h-4" aria-hidden="true" />
+                                </span>
+                              )
+                            )}
                             <span
-                              className={`absolute inset-y-0 left-0 flex items-center pl-3 ${
-                                active ? 'text-white' : 'text-blue-600'
+                              className={`block truncate ${
+                                selected ? 'font-medium' : 'font-normal'
                               }`}
                             >
-                              <Check className="w-4 h-4" aria-hidden="true" />
+                              {option.name}
                             </span>
-                          )}
-                        </>
-                      )}
-                    </Combobox.Option>
-                  ))}
+                          </>
+                        )}
+                      </Combobox.Option>
+                    );
+                  })}
 
                 {/* Show count of results when filtering */}
                 {query && (
@@ -153,7 +171,10 @@ SearchableCombobox.propTypes = {
     })
   ).isRequired,
   placeholder: PropTypes.string,
-  displayValue: PropTypes.func
+  displayValue: PropTypes.func,
+  showAvatar: PropTypes.bool,
+  getAvatarEmail: PropTypes.func,
+  getAvatarCustomUrl: PropTypes.func
 };
 
 export default SearchableCombobox;
