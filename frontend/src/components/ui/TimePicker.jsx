@@ -1,18 +1,5 @@
 import { forwardRef } from 'react';
 
-// Format decimal hours to readable string
-const formatDuration = (hours) => {
-  if (!hours || hours === 0) return '';
-
-  const totalMinutes = Math.round(hours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} hr`;
-  return `${h} hr ${m} min`;
-};
-
 // Generate duration options
 const generateDurationOptions = () => {
   const options = [];

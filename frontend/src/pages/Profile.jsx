@@ -5,7 +5,7 @@ import { getAvatarUrl } from '../utils/gravatar';
 import { User, Mail, Lock, Save, Loader, AlertCircle, CheckCircle, Moon, Sun, ArrowLeft } from 'lucide-react';
 
 const Profile = ({ onBack }) => {
-  const { user, api } = useAuth();
+  const { api } = useAuth();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const [profile, setProfile] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState('');

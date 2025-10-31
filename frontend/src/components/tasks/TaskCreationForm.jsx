@@ -7,21 +7,6 @@ import SearchableCombobox from '../ui/SearchableCombobox';
 import DateTimePicker from '../ui/DateTimePicker';
 import TimePicker from '../ui/TimePicker';
 
-// Convert HH:MM string to decimal hours
-const timeStringToHours = (timeString) => {
-  if (!timeString || timeString === '') return null;
-
-  const parts = timeString.split(':');
-  if (parts.length !== 2) return null;
-
-  const hours = parseInt(parts[0]) || 0;
-  const minutes = parseInt(parts[1]) || 0;
-
-  if (hours < 0 || minutes < 0 || minutes >= 60) return null;
-
-  return hours + (minutes / 60);
-};
-
 const TaskCreationForm = ({
   taskList,
   onTaskCreated,

@@ -9,7 +9,6 @@ const NotificationBell = ({ onNavigateToTask }) => {
   const { notifications, unreadCount, loading, markAsRead, markAllAsRead, clearNotification, clearAllNotifications } = useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
   const [missedReminders, setMissedReminders] = useState([]);
-  const [missedLoading, setMissedLoading] = useState(false);
 
   useEffect(() => {
     if (showDropdown) {
@@ -19,13 +18,10 @@ const NotificationBell = ({ onNavigateToTask }) => {
 
   const loadMissedReminders = async () => {
     try {
-      setMissedLoading(true);
       const data = await api.getMissedReminders();
       setMissedReminders(data);
     } catch (err) {
       console.error('Failed to load missed reminders:', err);
-    } finally {
-      setMissedLoading(false);
     }
   };
 
