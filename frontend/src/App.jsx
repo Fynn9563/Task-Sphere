@@ -9,6 +9,7 @@ import RegisterForm from './components/auth/RegisterForm';
 import TaskListSelector from './components/ui/TaskListSelector';
 import TaskManager from './components/tasks/TaskManager';
 import Profile from './pages/Profile';
+import PWAUpdatePrompt from './components/PWAUpdatePrompt';
 
 const TaskSphere = () => {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -112,6 +113,7 @@ const App = () => {
       <DarkModeWrapper>
         <NotificationProvider>
           <TaskSphere />
+          <PWAUpdatePrompt />
         </NotificationProvider>
       </DarkModeWrapper>
     </AuthProvider>

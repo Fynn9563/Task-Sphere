@@ -40,6 +40,8 @@
     "tailwindcss": "^4.1.15",
     "terser": "^5.44.0",
     "vite": "^7.1.11",
-    "vite-plugin-sri": "^0.0.2"
+    "vite-plugin-pwa": "^1.1.0",
+    "vite-plugin-sri": "^0.0.2",
+    "workbox-window": "^7.3.0"
   }
 }

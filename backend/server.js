@@ -16,11 +16,17 @@ const { createNotification } = require('./services/notification.service');
 const app = express();
 const server = http.createServer(app);
 
+// Parse allowed origins from environment variable
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+  : ['http://localhost:5173', 'http://localhost:5174'];
+
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || ["http://localhost:5173", "http://localhost:5174"],
-    methods: ["GET", "POST", "PUT", "DELETE"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
   }
 });
 
@@ -32,7 +38,7 @@ app.use('/api/', limiter);
 
 // Apply general middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || ['http://localhost:5173'],
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
