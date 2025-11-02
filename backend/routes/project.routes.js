@@ -2,7 +2,7 @@ const express = require('express');
 const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, sanitizeForLog } = require('../utils/sanitization');
-const { logger, securityLog } = require('../utils/logger');
+const { logger } = require('../utils/logger');
 
 const router = express.Router();
 
