@@ -4,6 +4,60 @@ import { WebSocketService } from '../services/WebSocketService';
 
 const NotificationContext = createContext();
 
+// Create notification sound using Web Audio API
+let audioContext = null;
+
+const initAudioContext = () => {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume audio context if suspended (browser autoplay policy)
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  return audioContext;
+};
+
+const playNotificationSound = () => {
+  try {
+    const ctx = initAudioContext();
+
+    // First tone
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.15);
+
+    // Second tone
+    setTimeout(() => {
+      const oscillator2 = ctx.createOscillator();
+      const gainNode2 = ctx.createGain();
+
+      oscillator2.connect(gainNode2);
+      gainNode2.connect(ctx.destination);
+
+      oscillator2.frequency.value = 1000;
+      oscillator2.type = 'sine';
+      gainNode2.gain.setValueAtTime(0.3, ctx.currentTime);
+      gainNode2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+
+      oscillator2.start(ctx.currentTime);
+      oscillator2.stop(ctx.currentTime + 0.15);
+    }, 80);
+  } catch (error) {
+    console.error('Failed to play notification sound:', error);
+  }
+};
+
 export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -23,6 +77,9 @@ export const NotificationProvider = ({ children }) => {
         console.log('Received new notification:', notification);
         setNotifications(prev => [notification, ...prev]);
         setUnreadCount(prev => prev + 1);
+
+        // Play notification sound
+        playNotificationSound();
 
         // Show browser notification if permission granted and (window not focused OR it's a reminder)
         const shouldShowBrowserNotif = Notification.permission === 'granted' &&
