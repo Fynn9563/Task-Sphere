@@ -65,16 +65,19 @@ export default defineConfig({
         runtimeCaching: [
           {
             // API routes - always network only (no cache)
-            urlPattern: /^https?:\/\/.*\/api\/.*/i,
+            // Matches /api/* paths only (not anywhere in URL)
+            urlPattern: /^https?:\/\/[^/]+\/api\/.*/i,
             handler: 'NetworkOnly',
           },
           {
             // WebSocket connections - always network only
-            urlPattern: /^https?:\/\/.*\/socket\.io\/.*/i,
+            // Matches /socket.io/* paths only (not anywhere in URL)
+            urlPattern: /^https?:\/\/[^/]+\/socket\.io\/.*/i,
             handler: 'NetworkOnly',
           },
           {
             // External resources (Gravatar, CDN) - network first with cache fallback
+            // Restricts to specific hostnames only
             urlPattern: /^https?:\/\/(www\.gravatar\.com|cdnjs\.cloudflare\.com)\/.*/i,
             handler: 'NetworkFirst',
             options: {

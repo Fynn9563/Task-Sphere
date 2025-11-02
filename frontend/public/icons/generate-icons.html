@@ -75,11 +75,39 @@
 
     <script>
         const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#2563eb" rx="64"/>
-  <path fill="#ffffff" d="M160 160h192c13.3 0 24 10.7 24 24v16c0 13.3-10.7 24-24 24H160c-13.3 0-24-10.7-24-24v-16c0-13.3 10.7-24 24-24zm0 96h192c13.3 0 24 10.7 24 24v16c0 13.3-10.7 24-24 24H160c-13.3 0-24-10.7-24-24v-16c0-13.3 10.7-24 24-24zm0 96h128c13.3 0 24 10.7 24 24v16c0 13.3-10.7 24-24 24H160c-13.3 0-24-10.7-24-24v-16c0-13.3 10.7-24 24-24z"/>
-  <circle cx="110" cy="192" r="16" fill="#60a5fa"/>
-  <circle cx="110" cy="288" r="16" fill="#60a5fa"/>
-  <circle cx="110" cy="384" r="16" fill="#60a5fa"/>
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bgGradient)" rx="64"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#60a5fa" stroke-width="3" opacity="0.3"/>
+  <circle cx="256" cy="256" r="140" fill="#ffffff" opacity="0.15"/>
+  <circle cx="380" cy="180" r="28" fill="#10b981" filter="url(#shadow)"/>
+  <path d="M 368 180 L 375 187 L 392 170" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="132" cy="332" r="28" fill="#10b981" filter="url(#shadow)"/>
+  <path d="M 120 332 L 127 339 L 144 322" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(256, 256)">
+    <rect x="-70" y="-90" width="140" height="180" rx="12" fill="#ffffff" filter="url(#shadow)"/>
+    <circle cx="-45" cy="-60" r="10" fill="#10b981"/>
+    <path d="M -50 -60 L -46 -56 L -40 -64" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="-25" y="-65" width="80" height="10" rx="3" fill="#e5e7eb"/>
+    <circle cx="-45" cy="-25" r="10" fill="#10b981"/>
+    <path d="M -50 -25 L -46 -21 L -40 -29" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="-25" y="-30" width="80" height="10" rx="3" fill="#e5e7eb"/>
+    <circle cx="-45" cy="10" r="10" fill="#2563eb"/>
+    <rect x="-25" y="5" width="80" height="10" rx="3" fill="#dbeafe"/>
+    <circle cx="-45" cy="45" r="10" fill="none" stroke="#d1d5db" stroke-width="2"/>
+    <rect x="-25" y="40" width="60" height="10" rx="3" fill="#f3f4f6"/>
+    <circle cx="-45" cy="75" r="10" fill="none" stroke="#d1d5db" stroke-width="2"/>
+    <rect x="-25" y="70" width="50" height="10" rx="3" fill="#f3f4f6"/>
+  </g>
+  <circle cx="256" cy="76" r="12" fill="#60a5fa" opacity="0.6"/>
+  <circle cx="436" cy="256" r="12" fill="#60a5fa" opacity="0.6"/>
 </svg>`;
 
         function drawIcon(size) {
