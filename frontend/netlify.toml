@@ -24,5 +24,5 @@
     X-Content-Type-Options  = "nosniff"
     Referrer-Policy         = "strict-origin-when-cross-origin"
     Permissions-Policy      = "geolocation=(), microphone=(), camera=()"
-    # Stricter CSP for production (no unsafe-inline for scripts, no unsafe-eval)
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://task-sphere-production.up.railway.app wss://task-sphere-production.up.railway.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+    # Stricter CSP for production with PWA and external resource support
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://task-sphere-production.up.railway.app wss://task-sphere-production.up.railway.app https://www.gravatar.com https://cdnjs.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; worker-src 'self';"
