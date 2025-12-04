@@ -43,5 +43,10 @@
     "vite-plugin-pwa": "^1.1.0",
     "vite-plugin-sri": "^0.0.2",
     "workbox-window": "^7.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "js-yaml": ">=4.1.1"
+    }
   }
 }
